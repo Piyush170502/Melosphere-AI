@@ -1,0 +1,4 @@
+streamlint
+transformers
+requests
+pronouncing
