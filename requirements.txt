@@ -2,3 +2,4 @@ pronouncing
 setuptools
 transformers
 sentencepiece
+PyTorch
