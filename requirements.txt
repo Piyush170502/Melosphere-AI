@@ -3,3 +3,6 @@ setuptools
 transformers
 sentencepiece
 PyTorch
+torch
+torchvision
+torchaudio
