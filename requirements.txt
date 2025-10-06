@@ -1,4 +1,2 @@
 streamlint
-transformers
-requests
 pronouncing
