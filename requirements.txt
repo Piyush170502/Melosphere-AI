@@ -1,3 +1,4 @@
 pronouncing
 setuptools
 transformers
+sentencepiece
