@@ -26,8 +26,7 @@ def get_rhymes(word):
         return rhymes
     else:
         return []
-
- 
+        
 def count_syllables(word):
     phones = pronouncing.phones_for_word(word)
     if phones:
