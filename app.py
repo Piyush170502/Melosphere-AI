@@ -56,3 +56,11 @@ def main():
         total_syllables = sum(syllables_per_word.values())
         st.write(f"Syllables per word: {syllables_per_word}")
         st.write(f"Total syllables in your line: {total_syllables}")
+       
+        # Translate to Spanish
+        translation = translate(lyric_line)
+        st.write(f"Spanish translation: {translation}")
+
+if __name__ == "__main__":
+    main()
+
