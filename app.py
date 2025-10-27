@@ -1,120 +1,104 @@
+# app.py
 import streamlit as st
-import re
+import requests
 from deep_translator import GoogleTranslator
-from indic_transliteration import sanscript
-from indic_transliteration.sanscript import transliterate
+import pronouncing
+from langdetect import detect
 
-# ---------------------------
-# Core Translation Function
-# ---------------------------
+# -----------------------------
+# Translation Functions
+# -----------------------------
 def translate(text, tgt_lang_code):
+    """Translate a given text to the target language"""
     try:
-        return GoogleTranslator(source='auto', target=tgt_lang_code).translate(text)
+        translated = GoogleTranslator(source='auto', target=tgt_lang_code).translate(text)
+        return translated
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error in translation: {e}"
 
-# ---------------------------
-# Syllable Count for Indic Languages
-# ---------------------------
-def count_indic_syllables(word):
-    vowels = re.findall(r'[\u0B05-\u0B14\u0B3E-\u0B4C\u0B60-\u0B61\u0905-\u090F\u093E-\u094C]', word)
-    return max(1, len(vowels))
-
-def count_total_syllables(line):
+def translate_blended_line(line, target_languages):
+    """
+    Translate a line into multiple languages (polyglot blending).
+    `target_languages` is a list of language codes.
+    """
     words = line.strip().split()
-    return sum(count_indic_syllables(w) for w in words)
+    blended_line = []
+    for i, word in enumerate(words):
+        tgt_lang = target_languages[i % len(target_languages)]
+        translated_word = translate(word, tgt_lang)
+        blended_line.append(translated_word)
+    return " ".join(blended_line)
 
-# ---------------------------
-# Rhyming in Indic Languages
-# ---------------------------
-def last_syllable(word):
-    word = word.strip()
-    return word[-2:]  # crude last 2 chars for rhyme
+# -----------------------------
+# Rhymes & Syllable Functions
+# -----------------------------
+def get_rhymes(word):
+    """Fetch rhymes for a given word from Datamuse API"""
+    response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
+    if response.status_code == 200:
+        rhymes = [item['word'] for item in response.json()]
+        return rhymes
+    return []
 
-def find_rhymes_indic(word, vocab_list):
-    target = last_syllable(word)
-    rhymes = [w for w in vocab_list if last_syllable(w) == target and w != word]
-    return rhymes[:10]
+def count_syllables(word):
+    """Count syllables using pronouncing library (fallback to vowels)"""
+    phones = pronouncing.phones_for_word(word)
+    if phones:
+        return pronouncing.syllable_count(phones[0])
+    return sum(1 for char in word.lower() if char in 'aeiou')
 
-# Example small vocabulary for Tamil
-TAMIL_VOCAB = ["காதல்", "பாதல்", "நாதல்", "மாதல்", "வாதல்", "சாதல்"]
-
-# ---------------------------
-# Rhythm Adjustment
-# ---------------------------
-def rhythmic_adjustment_indic(translated_line, target_syllables):
-    words = translated_line.strip().split()
-    total_syl = sum(count_indic_syllables(w) for w in words)
-
-    if total_syl < target_syllables:
-        words += ["…"] * (target_syllables - total_syl)
-    elif total_syl > target_syllables:
-        while total_syl > target_syllables and len(words) > 1:
-            removed = words.pop()
-            total_syl -= count_indic_syllables(removed)
-    return ' '.join(words)
-
-# ---------------------------
-# Pronunciation Guide
-# ---------------------------
-def pronunciation_guide_indic(line, lang='ta'):
-    if lang == 'ta':
-        return transliterate(line, sanscript.TAMIL, sanscript.ITRANS)
-    elif lang == 'hi':
-        return transliterate(line, sanscript.DEVANAGARI, sanscript.ITRANS)
-    elif lang == 'kn':
-        return transliterate(line, sanscript.KANNADA, sanscript.ITRANS)
-    elif lang == 'ml':
-        return transliterate(line, sanscript.MALAYALAM, sanscript.ITRANS)
-    elif lang == 'te':
-        return transliterate(line, sanscript.TELUGU, sanscript.ITRANS)
-    else:
-        return line
-
-# ---------------------------
-# Streamlit UI
-# ---------------------------
+# -----------------------------
+# Streamlit App
+# -----------------------------
 def main():
-    st.title("Melosphere AI - Indian Language Lyric Translator 🎵")
+    st.title("Melosphere AI - Lyrics without Limits 🎵")
 
-    lyric_input = st.text_area("Enter your English lyric line or full song:")
+    st.header("Phase 1: Translate & Rhyme")
+    lyric_line = st.text_input("Enter your lyric line (English):")
 
     languages = {
-        "Tamil": "ta",
-        "Hindi": "hi",
+        "Spanish": "es",
         "Kannada": "kn",
+        "Tamil": "ta",
         "Malayalam": "ml",
+        "Hindi": "hi",
         "Telugu": "te",
+        "Japanese": "ja",
     }
+    tgt_lang = st.selectbox("Select target language for translation:", list(languages.keys()))
 
-    tgt_lang = st.selectbox("Select Target Language:", list(languages.keys()))
+    if lyric_line:
+        words = lyric_line.strip().split()
+        last_word = words[-1].lower()
 
-    if lyric_input:
-        # Step 1: Translate
-        translated_line = translate(lyric_input, languages[tgt_lang])
-        st.subheader(f"{tgt_lang} Translation:")
-        st.write(translated_line)
+        # Rhymes
+        rhymes = get_rhymes(last_word)
+        if rhymes:
+            st.write(f"Rhymes for '{last_word}': {', '.join(rhymes)}")
+        else:
+            st.write(f"No rhymes found for '{last_word}'.")
 
-        # Step 2: Rhythmic Alignment
-        total_syllables = count_total_syllables(lyric_input)
-        rhythmic_line = rhythmic_adjustment_indic(translated_line, total_syllables)
-        st.subheader("Rhythmic-Aligned Lyric:")
-        st.write(rhythmic_line)
+        # Syllable counts
+        syllables_per_word = {w: count_syllables(w) for w in words}
+        total_syllables = sum(syllables_per_word.values())
+        st.write(f"Syllables per word: {syllables_per_word}")
+        st.write(f"Total syllables in your line: {total_syllables}")
 
-        # Step 3: Rhymes (using small vocab)
-        last_word = rhythmic_line.strip().split()[-1]
-        if tgt_lang == "Tamil":
-            rhymes = find_rhymes_indic(last_word, TAMIL_VOCAB)
-            st.subheader("Rhymes:")
-            if rhymes:
-                st.write(", ".join(rhymes))
-            else:
-                st.write("No rhymes found.")
+        # Translation
+        translation = translate(lyric_line, languages[tgt_lang])
+        st.write(f"{tgt_lang} translation: {translation}")
 
-        # Step 4: Pronunciation Guide
-        pron_guide = pronunciation_guide_indic(rhythmic_line, lang=languages[tgt_lang])
-        st.subheader("Pronunciation Guide (ITRANS):")
-        st.write(pron_guide)
+    st.header("Phase 2: Polyglot Lyric Blending")
+    blended_languages = st.multiselect(
+        "Select target languages for blended translation:",
+        list(languages.keys()),
+        default=["Spanish", "Hindi"]
+    )
+
+    if lyric_line and blended_languages:
+        blended_lang_codes = [languages[lang] for lang in blended_languages]
+        blended_line = translate_blended_line(lyric_line, blended_lang_codes)
+        st.write(f"Blended lyric line: {blended_line}")
 
 if __name__ == "__main__":
     main()
