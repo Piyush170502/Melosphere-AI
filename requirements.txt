@@ -8,4 +8,3 @@ setuptools
 streamlit
 requests
 pronouncing
-google-cloud-translate==3.16.0
