@@ -34,34 +34,51 @@ def clean_blended_line(line):
     line = re.sub(r"\s+", " ", line).strip()
     return line[0].upper() + line[1:] if line else line
 
+
+def smart_phrase_split(line):
+    """Split text into small phrases (2–5 words each)."""
+    words = line.split()
+    phrases = []
+    current = []
+    for w in words:
+        current.append(w)
+        if len(current) >= random.randint(2, 5) or w.endswith(('.', ',', ';', '?', '!')):
+            phrases.append(" ".join(current))
+            current = []
+    if current:
+        phrases.append(" ".join(current))
+    return phrases
+
+
 def translate_polyglot_line(line, target_languages, creativity=0.5):
     """
-    True polyglot lyric blending:
-    - Randomly mixes words across multiple languages.
-    - Creativity controls how much mixing happens.
+    Smarter phrase-level multilingual blending.
+    - Keeps small English anchors.
+    - Translates in 2–5 word phrases.
+    - Ensures smoother, more musical flow.
     """
     if not line:
         return ""
 
-    # Split words and punctuation while preserving order
-    words = re.findall(r"\w+|[^\w\s]", line, re.UNICODE)
-    blended_words = []
+    anchor_words = {"you", "i", "my", "me", "and", "the", "your", "a", "to", "for", "of", "in"}
+    phrases = smart_phrase_split(line)
+    blended_phrases = []
 
-    for word in words:
-        # Skip punctuation
-        if re.match(r"[.,!?;:]", word):
-            blended_words.append(word)
-            continue
-
-        # Randomly decide to translate based on creativity
-        if random.random() < creativity:
-            tgt_lang = random.choice(target_languages)
-            translated = translate(word, tgt_lang)
-            blended_words.append(translated if translated else word)
+    for phrase in phrases:
+        # Check if this phrase contains mostly anchors → keep English
+        words = phrase.lower().split()
+        if any(w in anchor_words for w in words) and random.random() > creativity * 0.7:
+            tgt_lang = "en"
         else:
-            blended_words.append(word)
+            if random.random() < creativity:
+                tgt_lang = random.choice(target_languages)
+            else:
+                tgt_lang = "en"
 
-    blended_line = " ".join(blended_words)
+        translated = translate(phrase, tgt_lang)
+        blended_phrases.append(translated if translated else phrase)
+
+    blended_line = " ".join(blended_phrases)
     return clean_blended_line(blended_line)
 
 # -----------------------------
@@ -157,7 +174,7 @@ def main():
         st.write("### 🎶 **Blended Lyric Line:**")
         st.success(blended)
 
-        st.caption("💡 Tip: Increase the creativity slider for a wilder multilingual mix!")
+        st.caption("💡 Tip: Higher creativity gives richer multilingual texture, but lower values keep phrasing smoother.")
 
     st.divider()
     st.markdown("""
