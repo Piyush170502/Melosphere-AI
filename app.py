@@ -4,39 +4,51 @@ import requests
 from deep_translator import GoogleTranslator
 import pronouncing
 from langdetect import detect
+import re
 
 # -----------------------------
 # Translation Functions
 # -----------------------------
 def translate(text, tgt_lang_code):
-    """Translate a given text to the target language"""
+    """Translate a given text to the target language (skip English)."""
     try:
-        # If target language is English, just return the same text
         if tgt_lang_code == 'en':
             return text
         translated = GoogleTranslator(source='auto', target=tgt_lang_code).translate(text)
         return translated
-    except Exception as e:
-        return f"Error in translation: {e}"
+    except Exception:
+        return text  # graceful fallback
 
-def translate_blended_line(line, target_languages):
+def chunk_text(text, chunk_size=4):
     """
-    Translate a line into multiple languages (polyglot blending).
-    Cycles through the selected languages word by word.
+    Split text into small phrase-like chunks (approx. 4 words each).
+    Keeps punctuation attached to last word of chunk.
     """
-    words = line.strip().split()
-    blended_line = []
-    for i, word in enumerate(words):
+    words = re.findall(r"\b\w+\b[.,!?;']*", text)
+    chunks = [' '.join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+    return chunks
+
+def translate_polyglot_line(line, target_languages):
+    """
+    Translates a line phrase-by-phrase into multiple languages,
+    cycling through selected languages for smoother blending.
+    """
+    chunks = chunk_text(line)
+    blended_chunks = []
+
+    for i, chunk in enumerate(chunks):
         tgt_lang = target_languages[i % len(target_languages)]
-        translated_word = translate(word, tgt_lang)
-        blended_line.append(translated_word)
-    return " ".join(blended_line)
+        translated_chunk = translate(chunk, tgt_lang)
+        blended_chunks.append(translated_chunk)
+
+    # Join with space; capitalize first letter if needed
+    blended_line = ' '.join(blended_chunks).strip()
+    return blended_line[0].upper() + blended_line[1:] if blended_line else blended_line
 
 # -----------------------------
 # Rhymes & Syllable Functions
 # -----------------------------
 def get_rhymes(word):
-    """Fetch rhymes for a given word from Datamuse API"""
     response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
     if response.status_code == 200:
         rhymes = [item['word'] for item in response.json()]
@@ -44,7 +56,6 @@ def get_rhymes(word):
     return []
 
 def count_syllables(word):
-    """Count syllables using pronouncing library (fallback to vowels)"""
     phones = pronouncing.phones_for_word(word)
     if phones:
         return pronouncing.syllable_count(phones[0])
@@ -83,7 +94,7 @@ def main():
         else:
             st.write(f"No rhymes found for '{last_word}'.")
 
-        # Syllable counts
+        # Syllables
         syllables_per_word = {w: count_syllables(w) for w in words}
         total_syllables = sum(syllables_per_word.values())
         st.write(f"Syllables per word: {syllables_per_word}")
@@ -95,14 +106,14 @@ def main():
 
     st.header("Phase 2: Polyglot Lyric Blending 🌍")
     blended_languages = st.multiselect(
-        "Select target languages for blended translation (you can include English):",
+        "Select languages for blended translation (include English for smoother results):",
         list(languages.keys()),
         default=["English", "Spanish", "Hindi"]
     )
 
     if lyric_line and blended_languages:
         blended_lang_codes = [languages[lang] for lang in blended_languages]
-        blended_line = translate_blended_line(lyric_line, blended_lang_codes)
+        blended_line = translate_polyglot_line(lyric_line, blended_lang_codes)
         st.write(f"**Blended lyric line:** {blended_line}")
 
 if __name__ == "__main__":
