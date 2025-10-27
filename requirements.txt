@@ -8,5 +8,4 @@ setuptools
 streamlit
 requests
 pronouncing
-transformers
-sentencepiece
+google-cloud-translate==3.16.0
