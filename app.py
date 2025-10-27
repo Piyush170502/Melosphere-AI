@@ -3,10 +3,9 @@ import streamlit as st
 import requests
 from deep_translator import GoogleTranslator
 from indicnlp.tokenize import indic_tokenize
-from indicnlp import common
-from indicnlp import transliterate
-from indicnlp.morph import unsup_morph
+from indicnlp import common, transliterate
 import pronouncing
+import re
 
 # Initialize Indic NLP
 INDIC_NLP_RESOURCES = "./indic_nlp_resources"
@@ -17,18 +16,28 @@ common.set_resources_path(INDIC_NLP_RESOURCES)
 # Translation using Google Translator
 def translate(text, tgt_lang_code):
     try:
-        translated = GoogleTranslator(source='auto', target=tgt_lang_code).translate(text)
-        return translated
+        return GoogleTranslator(source='auto', target=tgt_lang_code).translate(text)
     except Exception as e:
         return f"Error in translation: {e}"
 
 # English rhymes using Datamuse API
-def get_rhymes(word):
+def get_rhymes_en(word):
     response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
     if response.status_code == 200:
-        rhymes = [item['word'] for item in response.json()]
-        return rhymes
+        return [item['word'] for item in response.json()]
     return []
+
+# Indian language rhyme suggestions (crude, by last vowel sound)
+def get_rhymes_indic(word):
+    vowels = 'अआइईउऊएऐओऔािीुूेैोौ'
+    last_vowel_match = re.findall(f"[{vowels}]", word)
+    if not last_vowel_match:
+        return []
+    last_vowel = last_vowel_match[-1]
+    # For demo: return other words with same last vowel from a small sample dictionary
+    sample_dict = ["सपना", "ख़्वाब", "मन", "जन", "गगन", "अमन", "धरम", "कम"]
+    rhymes = [w for w in sample_dict if last_vowel in w]
+    return rhymes
 
 # English syllable counting
 def count_syllables_en(word):
@@ -36,18 +45,19 @@ def count_syllables_en(word):
     if phones:
         return pronouncing.syllable_count(phones[0])
     else:
+        # fallback: count vowels
         return sum(1 for char in word.lower() if char in 'aeiou')
 
 # Indic language syllable counting (approximation)
 def count_syllables_indic(line, lang_code):
     tokens = indic_tokenize.trivial_tokenize(line)
-    vowels = 'अआइईउऊएऐओऔािीुूेैोौ'  # basic Hindi/Tamil vowels
+    vowels = 'अआइईउऊएऐओऔािीुूेैोौ'  # Hindi/Tamil approximation
     total = 0
     for tok in tokens:
         total += sum(1 for char in tok if char in vowels)
     return total
 
-# Rhythmic adjustment (simple substitution to match syllables)
+# Rhythmic adjustment
 def rhythmic_adjustment(translated_line, original_syllables, lang_code):
     translated_syllables = count_syllables_indic(translated_line, lang_code)
     diff = original_syllables - translated_syllables
@@ -57,9 +67,9 @@ def rhythmic_adjustment(translated_line, original_syllables, lang_code):
         translated_line = translated_line[:diff]  # crude trimming
     return translated_line
 
-# Simple emotion detection using word lists
-positive_words = ["love", "happy", "joy", "smile"]
-negative_words = ["sad", "pain", "cry", "hate"]
+# Emotion detection (English)
+positive_words = ["love", "happy", "joy", "smile", "delight"]
+negative_words = ["sad", "pain", "cry", "hate", "heartbreak"]
 
 def detect_emotion_en(text):
     text = text.lower()
@@ -71,8 +81,8 @@ def detect_emotion_en(text):
         return "negative"
     return "neutral"
 
+# Emotion-aware translation adjustment
 def adjust_emotion(translated_line, emotion, lang_code):
-    # For demo: append emoji or simple words
     if emotion == "positive":
         return translated_line + " 😊"
     elif emotion == "negative":
@@ -81,7 +91,7 @@ def adjust_emotion(translated_line, emotion, lang_code):
 
 # ----------- STREAMLIT APP -----------
 
-st.title("Melosphere AI - Open Source Lyric Translator")
+st.title("Melosphere AI - Enhanced Open Source Lyric Translator")
 
 lyric_input = st.text_area("Enter your English lyric line or verse:")
 
@@ -111,10 +121,15 @@ if lyric_input:
     st.subheader("Rhythmic-Aligned Lyric")
     st.write(rhythmic_line)
 
-    # 4. Rhyme suggestions (last English word)
-    last_word = lyric_input.strip().split()[-1].lower()
-    rhymes = get_rhymes(last_word)
-    st.subheader(f"Rhymes for '{last_word}'")
+    # 4. Rhyme suggestions
+    last_word_en = lyric_input.strip().split()[-1].lower()
+    st.subheader(f"Rhyme Suggestions for '{last_word_en}'")
+    if tgt_lang == "English":
+        rhymes = get_rhymes_en(last_word_en)
+    else:
+        # crude: use last word of translated line
+        last_word_indic = translated_line.strip().split()[-1]
+        rhymes = get_rhymes_indic(last_word_indic)
     if rhymes:
         st.write(", ".join(rhymes))
     else:
