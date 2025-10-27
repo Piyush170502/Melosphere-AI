@@ -16,7 +16,7 @@ model_names = {
     'ja': 'Helsinki-NLP/opus-mt-en-ja'  # Japanese
 }
 
-st.info("Loading translation models... this may take some time on first run.")
+st.info("Loading translation models... this may take a minute on first run.")
 
 models = {lang: MarianMTModel.from_pretrained(model_names[lang]) for lang in model_names}
 tokenizers = {lang: MarianTokenizer.from_pretrained(model_names[lang]) for lang in model_names}
@@ -37,8 +37,7 @@ def translate(text, tgt_lang):
 def get_rhymes(word):
     response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
     if response.status_code == 200:
-        rhymes = [item['word'] for item in response.json()]
-        return rhymes
+        return [item['word'] for item in response.json()]
     return []
 
 def count_syllables(word):
@@ -59,7 +58,7 @@ def polyglot_blend(text, tgt_langs, creativity=0.5):
         punct = sentences[i + 1] if i + 1 < len(sentences) else ""
 
         # Decide whether to translate this chunk
-        if random.random() < creativity and tgt_langs:
+        if tgt_langs and random.random() < creativity:
             tgt = random.choice(tgt_langs)
         else:
             tgt = 'en'
