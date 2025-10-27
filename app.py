@@ -11,6 +11,9 @@ from langdetect import detect
 def translate(text, tgt_lang_code):
     """Translate a given text to the target language"""
     try:
+        # If target language is English, just return the same text
+        if tgt_lang_code == 'en':
+            return text
         translated = GoogleTranslator(source='auto', target=tgt_lang_code).translate(text)
         return translated
     except Exception as e:
@@ -19,7 +22,7 @@ def translate(text, tgt_lang_code):
 def translate_blended_line(line, target_languages):
     """
     Translate a line into multiple languages (polyglot blending).
-    `target_languages` is a list of language codes.
+    Cycles through the selected languages word by word.
     """
     words = line.strip().split()
     blended_line = []
@@ -57,6 +60,7 @@ def main():
     lyric_line = st.text_input("Enter your lyric line (English):")
 
     languages = {
+        "English": "en",
         "Spanish": "es",
         "Kannada": "kn",
         "Tamil": "ta",
@@ -65,6 +69,7 @@ def main():
         "Telugu": "te",
         "Japanese": "ja",
     }
+
     tgt_lang = st.selectbox("Select target language for translation:", list(languages.keys()))
 
     if lyric_line:
@@ -88,17 +93,17 @@ def main():
         translation = translate(lyric_line, languages[tgt_lang])
         st.write(f"{tgt_lang} translation: {translation}")
 
-    st.header("Phase 2: Polyglot Lyric Blending")
+    st.header("Phase 2: Polyglot Lyric Blending 🌍")
     blended_languages = st.multiselect(
-        "Select target languages for blended translation:",
+        "Select target languages for blended translation (you can include English):",
         list(languages.keys()),
-        default=["Spanish", "Hindi"]
+        default=["English", "Spanish", "Hindi"]
     )
 
     if lyric_line and blended_languages:
         blended_lang_codes = [languages[lang] for lang in blended_languages]
         blended_line = translate_blended_line(lyric_line, blended_lang_codes)
-        st.write(f"Blended lyric line: {blended_line}")
+        st.write(f"**Blended lyric line:** {blended_line}")
 
 if __name__ == "__main__":
     main()
