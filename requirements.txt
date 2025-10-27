@@ -9,3 +9,6 @@ streamlit
 requests
 pronouncing
 deep-translator
+gTTS
+transformers
+torch
