@@ -12,4 +12,4 @@ deep-translator
 gTTS
 transformers
 torch
-openai
+openai>=1.0.0
