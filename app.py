@@ -1,22 +1,20 @@
 # app.py
 import streamlit as st
 import requests
-import pronouncing
 from deep_translator import GoogleTranslator
-import os
+from indicnlp.tokenize import indic_tokenize
+from indicnlp import common
+from indicnlp import transliterate
+from indicnlp.morph import unsup_morph
+import pronouncing
 
-# ---------------------------
-# Optional: OpenAI imports
-# ---------------------------
-try:
-    from openai import OpenAI
-    client = OpenAI() if os.getenv("OPENAI_API_KEY") else None
-except ImportError:
-    client = None
+# Initialize Indic NLP
+INDIC_NLP_RESOURCES = "./indic_nlp_resources"
+common.set_resources_path(INDIC_NLP_RESOURCES)
 
-# ---------------------------
-# Translation Function
-# ---------------------------
+# ----------- FUNCTIONS -----------
+
+# Translation using Google Translator
 def translate(text, tgt_lang_code):
     try:
         translated = GoogleTranslator(source='auto', target=tgt_lang_code).translate(text)
@@ -24,142 +22,105 @@ def translate(text, tgt_lang_code):
     except Exception as e:
         return f"Error in translation: {e}"
 
-# ---------------------------
-# Rhyme Function
-# ---------------------------
+# English rhymes using Datamuse API
 def get_rhymes(word):
     response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
     if response.status_code == 200:
         rhymes = [item['word'] for item in response.json()]
         return rhymes
-    else:
-        return []
+    return []
 
-# ---------------------------
-# Syllable Count
-# ---------------------------
-def count_syllables(word):
+# English syllable counting
+def count_syllables_en(word):
     phones = pronouncing.phones_for_word(word)
     if phones:
         return pronouncing.syllable_count(phones[0])
     else:
         return sum(1 for char in word.lower() if char in 'aeiou')
 
-def count_total_syllables(line):
-    return sum(count_syllables(w) for w in line.split())
+# Indic language syllable counting (approximation)
+def count_syllables_indic(line, lang_code):
+    tokens = indic_tokenize.trivial_tokenize(line)
+    vowels = 'अआइईउऊएऐओऔािीुूेैोौ'  # basic Hindi/Tamil vowels
+    total = 0
+    for tok in tokens:
+        total += sum(1 for char in tok if char in vowels)
+    return total
 
-# ---------------------------
-# AI-powered Rhythmic Adjustment
-# ---------------------------
-def rhythmic_adjustment(translated_line, original_syllables, lang_name="Tamil"):
-    if not client:
-        return translated_line  # fallback if no API key
-    prompt = (
-        f"Rephrase this {lang_name} lyric to have approximately {original_syllables} syllables, "
-        f"keeping meaning, emotion, and rhyme intact: '{translated_line}'"
-    )
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
-    )
-    return response.choices[0].message.content
+# Rhythmic adjustment (simple substitution to match syllables)
+def rhythmic_adjustment(translated_line, original_syllables, lang_code):
+    translated_syllables = count_syllables_indic(translated_line, lang_code)
+    diff = original_syllables - translated_syllables
+    if diff > 0:
+        translated_line += " …" * diff
+    elif diff < 0:
+        translated_line = translated_line[:diff]  # crude trimming
+    return translated_line
 
-# ---------------------------
-# AI-powered Rhyme & Metaphor Suggestions
-# ---------------------------
-def suggest_rhymes_metaphors(line, lang_name="Tamil"):
-    if not client:
-        return []
-    prompt = f"Suggest creative rhymes, near-rhymes, and metaphorical expressions in {lang_name} for: '{line}'"
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.8,
-    )
-    return response.choices[0].message.content.split('\n')
+# Simple emotion detection using word lists
+positive_words = ["love", "happy", "joy", "smile"]
+negative_words = ["sad", "pain", "cry", "hate"]
 
-# ---------------------------
-# Pronunciation Guide
-# ---------------------------
-def pronunciation_guide(word, lang_name="Tamil"):
-    # Using Google Transliteration API or simple phonetic approximation
-    # Here we provide fallback using deep_translator (basic)
-    try:
-        phonetic = GoogleTranslator(source='auto', target='en').translate(word)
-        return phonetic
-    except:
-        return word
+def detect_emotion_en(text):
+    text = text.lower()
+    pos = sum(text.count(w) for w in positive_words)
+    neg = sum(text.count(w) for w in negative_words)
+    if pos > neg:
+        return "positive"
+    elif neg > pos:
+        return "negative"
+    return "neutral"
 
-# ---------------------------
-# Streamlit App
-# ---------------------------
-def main():
-    st.title("🎵 Melosphere AI - Lyrics without limits")
-    
-    # User input
-    lyric_input = st.text_area("Enter English lyric(s) or lines:", height=150)
-    
-    languages = {
-        "Tamil": "ta",
-        "Hindi": "hi",
-        "Kannada": "kn",
-        "Telugu": "te",
-        "Malayalam": "ml",
-        "Spanish": "es",
-        "Japanese": "ja",
-    }
-    tgt_lang_name = st.selectbox("Select target language:", list(languages.keys()))
-    tgt_lang_code = languages[tgt_lang_name]
-    
-    if lyric_input:
-        st.subheader("Original English Lyric")
-        st.write(lyric_input)
-        
-        # ---------------------------
-        # Translate
-        # ---------------------------
-        translated_line = translate(lyric_input, tgt_lang_code)
-        st.subheader(f"Translated ({tgt_lang_name}) Lyric")
-        st.write(translated_line)
-        
-        # ---------------------------
-        # Syllable & Rhythm
-        # ---------------------------
-        total_syllables = count_total_syllables(lyric_input)
-        rhythmic_line = rhythmic_adjustment(translated_line, total_syllables, tgt_lang_name)
-        st.subheader("Rhythmic-Aligned Lyric")
-        st.write(rhythmic_line)
-        
-        # ---------------------------
-        # Rhymes & Metaphors
-        # ---------------------------
-        st.subheader("Creative Rhyme & Metaphor Suggestions")
-        suggestions = suggest_rhymes_metaphors(rhythmic_line, tgt_lang_name)
-        if suggestions:
-            for s in suggestions:
-                st.write("-", s)
-        else:
-            st.write("No suggestions (API key may be missing).")
-        
-        # ---------------------------
-        # Pronunciation Guide
-        # ---------------------------
-        st.subheader("Pronunciation Guide")
-        words = rhythmic_line.split()
-        pronun_dict = {w: pronunciation_guide(w, tgt_lang_name) for w in words}
-        st.write(pronun_dict)
-        
-        # ---------------------------
-        # Rhymes for last word
-        # ---------------------------
-        last_word = words[-1]
-        rhymes = get_rhymes(last_word)
-        st.subheader(f"Rhymes for '{last_word}'")
-        if rhymes:
-            st.write(", ".join(rhymes))
-        else:
-            st.write("No rhymes found.")
+def adjust_emotion(translated_line, emotion, lang_code):
+    # For demo: append emoji or simple words
+    if emotion == "positive":
+        return translated_line + " 😊"
+    elif emotion == "negative":
+        return translated_line + " 😢"
+    return translated_line
 
-if __name__ == "__main__":
-    main()
+# ----------- STREAMLIT APP -----------
+
+st.title("Melosphere AI - Open Source Lyric Translator")
+
+lyric_input = st.text_area("Enter your English lyric line or verse:")
+
+languages = {
+    "Hindi": "hi",
+    "Tamil": "ta",
+    "Telugu": "te",
+    "Malayalam": "ml",
+    "Kannada": "kn",
+}
+
+tgt_lang = st.selectbox("Select target language:", list(languages.keys()))
+
+if lyric_input:
+    # 1. Emotion detection
+    emotion = detect_emotion_en(lyric_input)
+    st.write(f"Detected Emotion: {emotion}")
+
+    # 2. Translation
+    translated_line = translate(lyric_input, languages[tgt_lang])
+    st.subheader(f"{tgt_lang} Translation")
+    st.write(translated_line)
+
+    # 3. Rhythmic adjustment
+    original_syllables = sum(count_syllables_en(w) for w in lyric_input.split())
+    rhythmic_line = rhythmic_adjustment(translated_line, original_syllables, languages[tgt_lang])
+    st.subheader("Rhythmic-Aligned Lyric")
+    st.write(rhythmic_line)
+
+    # 4. Rhyme suggestions (last English word)
+    last_word = lyric_input.strip().split()[-1].lower()
+    rhymes = get_rhymes(last_word)
+    st.subheader(f"Rhymes for '{last_word}'")
+    if rhymes:
+        st.write(", ".join(rhymes))
+    else:
+        st.write("No rhymes found.")
+
+    # 5. Emotion adjustment
+    final_line = adjust_emotion(rhythmic_line, emotion, languages[tgt_lang])
+    st.subheader("Final Lyric with Emotion Adjustment")
+    st.write(final_line)
