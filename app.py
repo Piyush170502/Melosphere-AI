@@ -1,106 +1,93 @@
-# app.py
 import streamlit as st
+import json
 import os
-import re
 from google.cloud import translate_v2 as translate
+import random
 
 # -----------------------------
 # Set up Google Translate client
 # -----------------------------
-# Make sure you added your API key in Streamlit Secrets as:
-# GOOGLE_API_KEY = "YOUR_API_KEY_HERE"
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcloud_key.json"
-
-# In Streamlit cloud, save your API key JSON content as a file
-# This will let the client authenticate
-import json
+# Load secret JSON and write to a temp file
 gcloud_key = json.loads(st.secrets["GOOGLE_API_KEY_JSON"])
 with open("gcloud_key.json", "w") as f:
     json.dump(gcloud_key, f)
 
+# Set environment variable for Google SDK
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcloud_key.json"
+
 translate_client = translate.Client()
 
 # -----------------------------
-# Translation helper
+# Language codes for blending
 # -----------------------------
-def translate_text(text, target_lang):
-    """Translate text into target_lang using Google Translate API"""
-    if target_lang == "en":
-        return text  # keep English as is
-    try:
-        result = translate_client.translate(text, target_language=target_lang)
-        return result["translatedText"]
-    except Exception as e:
-        return f"[Error: {e}]"
-
-# -----------------------------
-# Polyglot blending logic
-# -----------------------------
-def polyglot_blend(sentence, languages):
-    """
-    Smooth polyglot blending:
-    - Split sentence into phrases/clauses
-    - Rotate languages per phrase
-    - Preserve important English keywords
-    """
-    # Split by punctuation and spaces
-    chunks = re.split(r'([,.!?])', sentence)
-    chunks = [c.strip() for c in chunks if c.strip()]
-
-    blended_chunks = []
-
-    # Keywords to preserve in English
-    keywords = ["love", "handmade", "somebody", "Girl"]
-
-    for i, chunk in enumerate(chunks):
-        tgt_lang = languages[i % len(languages)]
-        translated = translate_text(chunk, tgt_lang)
-
-        # Restore preserved keywords
-        for k in keywords:
-            if k in chunk:
-                translated = re.sub(r'\b' + re.escape(k) + r'\b', k, translated)
-
-        blended_chunks.append(translated)
-
-    # Join chunks
-    return " ".join(blended_chunks)
-
-# -----------------------------
-# Streamlit UI
-# -----------------------------
-st.title("🎵 Polyglot Lyric Blending App")
-
-lyric_line = st.text_area("Enter a lyric line to blend:", "")
-
-# Select languages to blend
-available_languages = {
-    "English": "en",
+languages = {
     "Hindi": "hi",
     "Tamil": "ta",
     "Telugu": "te",
     "Malayalam": "ml",
-    "Japanese": "ja"
+    "Japanese": "ja",
+    "English": "en"
 }
 
-selected_langs = st.multiselect(
-    "Select languages to blend (at least 2):",
-    options=list(available_languages.keys()),
-    default=["English", "Hindi", "Tamil"]
+# -----------------------------
+# Helper Functions
+# -----------------------------
+def translate_text(text, target_lang):
+    """Translate a text string to a target language using Google Translate."""
+    if target_lang == "en":
+        return text  # Keep English as-is
+    result = translate_client.translate(text, target_language=target_lang)
+    return result["translatedText"]
+
+def polyglot_blend(text, blend_languages, intensity=2):
+    """
+    Blend a text line into multiple languages.
+    :param text: original English line
+    :param blend_languages: list of language codes
+    :param intensity: number of words to translate per language
+    """
+    words = text.split()
+    blended_words = []
+
+    for i, word in enumerate(words):
+        # Randomly pick a language based on intensity
+        if blend_languages and random.random() < (intensity / 10):
+            lang = random.choice(blend_languages)
+            translated_word = translate_text(word, lang)
+            blended_words.append(translated_word)
+        else:
+            blended_words.append(word)
+    return " ".join(blended_words)
+
+# -----------------------------
+# Streamlit UI
+# -----------------------------
+st.set_page_config(page_title="Polyglot Lyric Blending", layout="wide")
+st.title("🎵 Polyglot Lyric Blending")
+
+st.write(
+    "Enter your lyric line in English, and blend it with multiple languages "
+    "like Hindi, Tamil, Telugu, Malayalam, and Japanese!"
 )
 
-blend_button = st.button("Blend Lyric")
+lyric_line = st.text_input("Enter English lyric line:")
 
-if blend_button:
+st.write("### Select languages for blending:")
+selected_langs = st.multiselect(
+    "Languages",
+    options=list(languages.keys()),
+    default=["Hindi", "Tamil", "Telugu", "Malayalam", "Japanese"]
+)
+
+intensity = st.slider(
+    "Blending intensity (higher = more words translated):", min_value=1, max_value=10, value=3
+)
+
+if st.button("Blend Lyric"):
     if lyric_line.strip() == "":
-        st.warning("Please enter a lyric line.")
-    elif len(selected_langs) < 2:
-        st.warning("Select at least 2 languages for blending.")
+        st.warning("Please enter a lyric line first.")
     else:
-        # Map selected names to language codes
-        codes = [available_languages[l] for l in selected_langs]
-
-        blended = polyglot_blend(lyric_line, codes)
-        st.write("### 🎶 Blended Lyric Line:")
-        st.success(blended)
+        blend_codes = [languages[lang] for lang in selected_langs]
+        blended_line = polyglot_blend(lyric_line, blend_codes, intensity)
+        st.success(blended_line)
