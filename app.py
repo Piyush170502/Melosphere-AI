@@ -1,121 +1,109 @@
 import streamlit as st
 import requests
 import pronouncing
-from google.cloud import translate
 
 # -----------------------------
-# Load Google Translate API Key
+# Load Google API Key from Streamlit Secrets
 # -----------------------------
-import os
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 
-# Option 1: Use environment variable (recommended)
-# export GOOGLE_API_KEY="YOUR_API_KEY" in terminal
-GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)  # safer in Streamlit sharing
+# -----------------------------
+# Languages
+# -----------------------------
+languages = {
+    "English": "en",
+    "Hindi": "hi",
+    "Tamil": "ta",
+    "Telugu": "te",
+    "Malayalam": "ml",
+    "Japanese": "ja"
+}
 
-# Initialize client
-client = translate.TranslationServiceClient(client_options={"api_key": GOOGLE_API_KEY})
-PROJECT_ID = "eighth-pursuit-476416-c8"
-LOCATION = "global"
-
+# -----------------------------
+# Google Translate API function
+# -----------------------------
 def translate_text(text, target_lang):
-   parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
-    try:
-        response = client.translate_text(
-            request={
-                "parent": parent,
-                "contents": [text],
-                "mime_type": "text/plain",
-                "target_language_code": target_lang,
-            }
-        )
-        return response.translations[0].translated_text
-    except Exception as e:
-        return f"Error in translation: {e}"
+    url = "https://translation.googleapis.com/language/translate/v2"
+    params = {
+        "q": text,
+        "target": target_lang,
+        "key": GOOGLE_API_KEY
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        return response.json()['data']['translations'][0]['translatedText']
+    else:
+        return f"Error: {response.text}"
 
 # -----------------------------
-# Rhymes & syllables functions
+# Get rhymes for a word
 # -----------------------------
 def get_rhymes(word):
-    response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
+    response = requests.get(f"https://api.datamuse.com/words?rel_rhy={word}&max=10")
     if response.status_code == 200:
         rhymes = [item['word'] for item in response.json()]
         return rhymes
-    return []
+    else:
+        return []
 
+# -----------------------------
+# Count syllables
+# -----------------------------
 def count_syllables(word):
     phones = pronouncing.phones_for_word(word)
     if phones:
         return pronouncing.syllable_count(phones[0])
     else:
+        # Fallback: approximate by counting vowels
         return sum(1 for char in word.lower() if char in 'aeiou')
 
 # -----------------------------
-# Polyglot lyric blending
+# Polygot lyric blending
 # -----------------------------
-def translate_polyglot_line(line, langs):
-    """
-    Splits the line into words and cycles through selected languages.
-    """
-    words = line.strip().split()
-    blended_chunks = []
+def translate_polyglot_line(text, selected_langs):
+    words = text.strip().split()
+    blended_words = []
+    n_langs = len(selected_langs)
     for i, word in enumerate(words):
-        lang = langs[i % len(langs)]
+        # Cycle through selected languages
+        lang = selected_langs[i % n_langs]
         if lang == "en":
-            blended_chunks.append(word)
+            blended_words.append(word)
         else:
-            translated_word = translate_text(word, lang)
-            blended_chunks.append(translated_word)
-    return " ".join(blended_chunks)
+            translated = translate_text(word, lang)
+            blended_words.append(translated)
+    return " ".join(blended_words)
 
 # -----------------------------
-# Streamlit app
+# Streamlit UI
 # -----------------------------
-def main():
-    st.title("Melosphere AI - Lyrics without limits (Google Translate)")
-    
-    lyric_line = st.text_input("Enter your Lyric Line (English):")
-    
-    languages = {
-        "English": "en",
-        "Hindi": "hi",
-        "Tamil": "ta",
-        "Telugu": "te",
-        "Malayalam": "ml",
-        "Japanese": "ja",
-    }
+st.title("🎵 Melosphere AI - Polygot Lyric Creator")
 
-    # Multi-select for polyglot blending
-    blended_langs = st.multiselect(
-        "Select languages for polyglot blending (cycle through words):",
-        list(languages.keys()),
-        default=["English", "Hindi", "Tamil"]
-    )
+lyric_line = st.text_input("Enter your Lyric Line (English):")
 
-    if lyric_line:
-        words = lyric_line.strip().split()
-        last_word = words[-1].lower()
-        rhymes = get_rhymes(last_word)
-        if rhymes:
-            st.write(f"Rhymes for '{last_word}': {', '.join(rhymes)}")
-        else:
-            st.write(f"No rhymes found for '{last_word}'.")
+# Multi-select for blending
+blended_langs = st.multiselect(
+    "Select languages for blending (English included for smoothness):",
+    options=list(languages.keys()),
+    default=["English", "Hindi", "Tamil"]
+)
 
-        syllables_per_word = {w: count_syllables(w) for w in words}
-        total_syllables = sum(syllables_per_word.values())
-        st.write(f"Syllables per word: {syllables_per_word}")
-        st.write(f"Total syllables in your line: {total_syllables}")
+if lyric_line and blended_langs:
+    selected_codes = [languages[l] for l in blended_langs]
+    blended = translate_polyglot_line(lyric_line, selected_codes)
+    st.write("### **Blended Lyric Line:**")
+    st.success(blended)
 
-        if blended_langs:
-            codes = [languages[l] for l in blended_langs]
-            blended_line = translate_polyglot_line(lyric_line, codes)
-            st.write("### **Blended Lyric Line:**")
-            st.success(blended_line)
+    # Rhymes for last word
+    last_word = lyric_line.strip().split()[-1].lower()
+    rhymes = get_rhymes(last_word)
+    if rhymes:
+        st.write(f"**Rhymes for '{last_word}':** {', '.join(rhymes)}")
+    else:
+        st.write(f"No rhymes found for '{last_word}'.")
 
-        # Optionally show full translations
-        st.write("### **Full Translations:**")
-        for lang_name, code in languages.items():
-            translation = translate_text(lyric_line, code)
-            st.write(f"{lang_name}: {translation}")
-
-if __name__ == "__main__":
-    main()
+    # Syllable count
+    syllables_per_word = {w: count_syllables(w) for w in lyric_line.strip().split()}
+    total_syllables = sum(syllables_per_word.values())
+    st.write(f"**Syllables per word:** {syllables_per_word}")
+    st.write(f"**Total syllables:** {total_syllables}")
