@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import requests
 from deep_translator import GoogleTranslator
@@ -8,10 +7,10 @@ import random
 import time
 
 # -----------------------------
-# Translation Functions
+# TRANSLATION UTILITIES
 # -----------------------------
 def translate(text, tgt_lang_code, retries=2):
-    """Translate text safely, skip if English or empty."""
+    """Translate text safely, fallback to original if error."""
     if not text or not isinstance(text, str):
         return ""
     try:
@@ -27,59 +26,55 @@ def translate(text, tgt_lang_code, retries=2):
             return translate(text, tgt_lang_code, retries - 1)
         return text  # fallback to original text
 
-def smart_chunk_text(text):
-    """Split text into meaningful segments using punctuation and structure."""
-    segments = re.split(r'([,.;!?])', text)
-    chunks, buffer = [], ""
-    for seg in segments:
-        seg = seg.strip()
-        if not seg:
-            continue
-        buffer += (" " + seg).strip()
-        if any(p in seg for p in [".", ",", ";", "!", "?"]) or len(buffer.split()) > 5:
-            chunks.append(buffer.strip())
-            buffer = ""
-    if buffer:
-        chunks.append(buffer.strip())
-    return chunks
-
 def clean_blended_line(line):
-    """Fix spacing and capitalization for final blended line."""
+    """Fix spacing, punctuation, and capitalization."""
     if not line:
         return ""
-    line = re.sub(r'\s+([.,!?])', r'\1', line)
-    line = re.sub(r'\s+', ' ', line).strip()
+    line = re.sub(r"\s+([.,!?])", r"\1", line)
+    line = re.sub(r"\s+", " ", line).strip()
     return line[0].upper() + line[1:] if line else line
 
 def translate_polyglot_line(line, target_languages, creativity=0.5):
     """
-    Polyglot lyric blending with creativity control.
-    - creativity: 0 → mostly English, 1 → heavy multilingual.
+    True polyglot lyric blending:
+    - Randomly mixes words across multiple languages.
+    - Creativity controls how much mixing happens.
     """
-    chunks = smart_chunk_text(line)
-    blended_chunks = []
+    if not line:
+        return ""
 
-    for chunk in chunks:
-        # Weighted chance to switch from English to another language
-        if len(target_languages) == 1 or random.random() > creativity:
-            tgt_lang = "en"
+    # Split words and punctuation while preserving order
+    words = re.findall(r"\w+|[^\w\s]", line, re.UNICODE)
+    blended_words = []
+
+    for word in words:
+        # Skip punctuation
+        if re.match(r"[.,!?;:]", word):
+            blended_words.append(word)
+            continue
+
+        # Randomly decide to translate based on creativity
+        if random.random() < creativity:
+            tgt_lang = random.choice(target_languages)
+            translated = translate(word, tgt_lang)
+            blended_words.append(translated if translated else word)
         else:
-            tgt_lang = random.choice([lang for lang in target_languages if lang != "en"])
+            blended_words.append(word)
 
-        translated_chunk = translate(chunk, tgt_lang)
-        blended_chunks.append(str(translated_chunk) if translated_chunk else chunk)
-
-    blended_line = " ".join(blended_chunks)
+    blended_line = " ".join(blended_words)
     return clean_blended_line(blended_line)
 
 # -----------------------------
-# Rhyme & Syllable Functions
+# RHYME & SYLLABLE UTILITIES
 # -----------------------------
 def get_rhymes(word):
-    response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
-    if response.status_code == 200:
-        return [item["word"] for item in response.json()]
-    return []
+    try:
+        response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
+        if response.status_code == 200:
+            return [item["word"] for item in response.json()]
+        return []
+    except:
+        return []
 
 def count_syllables(word):
     phones = pronouncing.phones_for_word(word)
@@ -88,13 +83,21 @@ def count_syllables(word):
     return sum(1 for c in word.lower() if c in "aeiou")
 
 # -----------------------------
-# Streamlit App
+# STREAMLIT APP
 # -----------------------------
 def main():
+    st.set_page_config(page_title="Melosphere AI", page_icon="🎶")
     st.title("🎵 Melosphere AI — Lyrics Without Limits 🌍")
 
-    st.header("Phase 1 — Translation & Rhyme")
-    lyric_line = st.text_input("Enter your lyric line (English):")
+    st.markdown("""
+    **Your all-in-one creative co-writer, translator, and vocal coach.**  
+    Empowering lyricists to create multilingual songs while preserving rhythm, rhyme, and emotion.
+    """)
+
+    st.divider()
+    st.header("Phase 1 — Multilingual Translation & Rhyme Assistant")
+
+    lyric_line = st.text_input("🎤 Enter your lyric line (English):")
 
     languages = {
         "English": "en",
@@ -105,47 +108,64 @@ def main():
         "Hindi": "hi",
         "Telugu": "te",
         "Japanese": "ja",
+        "French": "fr",
+        "German": "de",
     }
 
-    tgt_lang = st.selectbox("Select a target language for single translation:", list(languages.keys()))
+    tgt_lang = st.selectbox("🌐 Select target language for translation:", list(languages.keys()))
 
     if lyric_line:
         words = lyric_line.strip().split()
         last_word = words[-1].lower()
 
-        # Rhymes
+        # Rhyme suggestions
         rhymes = get_rhymes(last_word)
         if rhymes:
-            st.write(f"Rhymes for **{last_word}**: {', '.join(rhymes)}")
+            st.write(f"**Rhymes for '{last_word}':** {', '.join(rhymes)}")
         else:
-            st.write(f"No rhymes found for **{last_word}**.")
+            st.write(f"No rhymes found for '{last_word}'.")
 
-        # Syllables
+        # Syllable count
         syllables = {w: count_syllables(w) for w in words}
-        st.write("Syllables per word:", syllables)
-        st.write("Total syllables:", sum(syllables.values()))
+        st.write("🪶 **Syllables per word:**", syllables)
+        st.write("🔢 **Total syllables:**", sum(syllables.values()))
 
         # Translation
-        st.write(f"**{tgt_lang} translation:** {translate(lyric_line, languages[tgt_lang])}")
+        translated = translate(lyric_line, languages[tgt_lang])
+        st.success(f"**{tgt_lang} Translation:** {translated}")
 
-    st.header("Phase 2 — Enhanced Polyglot Lyric Blending 🌐")
+    # -----------------------------
+    # PHASE 2 — POLYGLOT LYRIC BLENDING
+    # -----------------------------
+    st.divider()
+    st.header("Phase 2 — Polyglot Lyric Blending 🌐")
 
     blended_langs = st.multiselect(
-        "Select languages to blend (include English for smoother flow):",
+        "Select languages to blend (include English for smoother results):",
         list(languages.keys()),
         default=["English", "Spanish", "Hindi", "Tamil"]
     )
 
     creativity = st.slider(
         "🎨 Creativity Level (0 = Mostly English, 1 = Full Multilingual Remix)",
-        min_value=0.0, max_value=1.0, value=0.5, step=0.1
+        0.0, 1.0, 0.6, 0.1
     )
 
     if lyric_line and blended_langs:
         codes = [languages[l] for l in blended_langs]
         blended = translate_polyglot_line(lyric_line, codes, creativity)
-        st.write("### **Blended Lyric Line:**")
+        st.write("### 🎶 **Blended Lyric Line:**")
         st.success(blended)
+
+        st.caption("💡 Tip: Increase the creativity slider for a wilder multilingual mix!")
+
+    st.divider()
+    st.markdown("""
+    🚀 **Next Phases Preview**
+    - **Phase 3:** Rhythmic Translation Enhancements  
+    - **Phase 4:** Pronunciation Guide & Emotion Adaptation  
+    - **Phase 5:** AI Rhyme–Metaphor Engine + DAW Integration  
+    """)
 
 if __name__ == "__main__":
     main()
