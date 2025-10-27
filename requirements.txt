@@ -10,3 +10,4 @@ requests
 pronouncing
 deep-translator
 langdetect
+regex
