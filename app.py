@@ -63,7 +63,6 @@ def rhythm_feedback(syllable_counts):
 def main():
     st.set_page_config(page_title="Melosphere AI", page_icon="🎶", layout="centered")
     st.title("🎶 Melosphere AI — Lyrics Without Limits")
-    st.markdown("**Phase 1: Multilingual Lyric Translation + Rhyme + Rhythm Analyzer**")
 
     st.divider()
     st.markdown("### 📝 Enter Your Lyrics")
