@@ -1,66 +1,55 @@
 import streamlit as st
-import requests, re, random
+import requests
 import pronouncing
-from transformers import MBartForConditionalGeneration, MBart50TokenizerFast
-import torch
+import random
+import re
+from transformers import MarianMTModel, MarianTokenizer
 
-# ------------------------------------------------------------
-# Load multilingual model once
-# ------------------------------------------------------------
-@st.cache_resource
-def load_mbart_model():
-    model_name = "facebook/mbart-large-50-many-to-many-mmt"
-    tokenizer = MBart50TokenizerFast.from_pretrained(model_name)
-    model = MBartForConditionalGeneration.from_pretrained(model_name)
-    return tokenizer, model
+# -----------------------------
+# MarianMT Models Setup
+# -----------------------------
+model_names = {
+    'hi': 'Helsinki-NLP/opus-mt-en-hi',
+    'ta': 'Helsinki-NLP/opus-mt-en-ta',
+    'te': 'Helsinki-NLP/opus-mt-en-te',
+    'ml': 'Helsinki-NLP/opus-mt-en-ml',
+    'ja': 'Helsinki-NLP/opus-mt-en-ja'  # Japanese
+}
 
-tokenizer, model = load_mbart_model()
+st.info("Loading translation models... this may take some time on first run.")
 
-# ------------------------------------------------------------
-# Utility functions
-# ------------------------------------------------------------
-def translate_with_model(text, src_lang, tgt_lang):
-    """Translate a sentence using mBART-50."""
-    try:
-        tokenizer.src_lang = src_lang
-        inputs = tokenizer(text, return_tensors="pt")
-        generated_tokens = model.generate(
-            **inputs,
-            forced_bos_token_id=tokenizer.lang_code_to_id[tgt_lang],
-            max_length=256
-        )
-        return tokenizer.decode(generated_tokens[0], skip_special_tokens=True)
-    except Exception as e:
+models = {lang: MarianMTModel.from_pretrained(model_names[lang]) for lang in model_names}
+tokenizers = {lang: MarianTokenizer.from_pretrained(model_names[lang]) for lang in model_names}
+
+# -----------------------------
+# Helper Functions
+# -----------------------------
+def translate(text, tgt_lang):
+    if tgt_lang == 'en':
         return text
-
-def clean_text(line):
-    line = re.sub(r"\s+([.,!?])", r"\1", line)
-    return re.sub(r"\s+", " ", line).strip()
+    tokenizer = tokenizers[tgt_lang]
+    model = models[tgt_lang]
+    tokenizer.src_lang = 'en_XX'
+    inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+    translated_tokens = model.generate(**inputs)
+    return tokenizer.decode(translated_tokens[0], skip_special_tokens=True)
 
 def get_rhymes(word):
-    try:
-        resp = requests.get(f"https://api.datamuse.com/words?rel_rhy={word}&max=10")
-        if resp.status_code == 200:
-            return [x["word"] for x in resp.json()]
-    except:
-        pass
+    response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
+    if response.status_code == 200:
+        rhymes = [item['word'] for item in response.json()]
+        return rhymes
     return []
 
 def count_syllables(word):
     phones = pronouncing.phones_for_word(word)
     if phones:
         return pronouncing.syllable_count(phones[0])
-    return sum(1 for c in word.lower() if c in "aeiou")
+    else:
+        return sum(1 for char in word.lower() if char in 'aeiou')
 
-# ------------------------------------------------------------
-# Polyglot blending using mBART
-# ------------------------------------------------------------
-def mbart_polyglot_blend(text, src_lang, tgt_langs, creativity=0.5):
-    """
-    Sentence-level polyglot blending with mBART.
-    Each sentence can be rendered in a different language depending on creativity.
-    """
-    sentences = re.split(r"([.?!])", text)
+def polyglot_blend(text, tgt_langs, creativity=0.5):
+    sentences = re.split(r'([.?!])', text)
     blended = []
 
     for i in range(0, len(sentences), 2):
@@ -69,93 +58,61 @@ def mbart_polyglot_blend(text, src_lang, tgt_langs, creativity=0.5):
             continue
         punct = sentences[i + 1] if i + 1 < len(sentences) else ""
 
-        # Decide language
-        if random.random() < creativity:
+        # Decide whether to translate this chunk
+        if random.random() < creativity and tgt_langs:
             tgt = random.choice(tgt_langs)
         else:
-            tgt = src_lang
+            tgt = 'en'
 
-        translated = translate_with_model(sentence, src_lang, tgt)
+        translated = translate(sentence, tgt)
         blended.append(translated + punct)
 
-    return clean_text(" ".join(blended))
+    return re.sub(r'\s+([.,!?])', r'\1', " ".join(blended)).strip()
 
-# ------------------------------------------------------------
-# Streamlit UI
-# ------------------------------------------------------------
-def main():
-    st.set_page_config(page_title="Melosphere AI", page_icon="🎶")
-    st.title("🎵 Melosphere AI — Lyrics Without Limits 🌍")
+# -----------------------------
+# Streamlit App
+# -----------------------------
+st.title("Melosphere AI - Polyglot Lyric Blending")
 
-    st.markdown("""
-    *AI-powered multilingual lyric writing and blending, backed by Facebook mBART-50.*  
-    """)
+lyric_line = st.text_area("Enter your Lyric Line (English):", height=100)
 
-    st.divider()
-    st.header("Phase 1 — Rhyme & Translation Assistant")
+languages = {
+    "English": "en",
+    "Hindi": "hi",
+    "Tamil": "ta",
+    "Telugu": "te",
+    "Malayalam": "ml",
+    "Japanese": "ja",
+}
 
-    lyric_line = st.text_input("🎤 Enter your lyric line (English):")
+blended_langs = st.multiselect(
+    "Select target languages for blending:",
+    list(languages.keys())[1:],  # skip English
+    default=["Hindi", "Tamil"]
+)
 
-    languages = {
-        "English": "en_XX",
-        "Spanish": "es_XX",
-        "Hindi": "hi_IN",
-        "Tamil": "ta_IN",
-        "French": "fr_XX",
-        "German": "de_DE",
-        "Japanese": "ja_XX",
-        "Telugu": "te_IN",
-        "Malayalam": "ml_IN",
-    }
+creativity = st.slider("Blending Creativity", 0.0, 1.0, 0.5)
 
-    tgt_lang = st.selectbox("🌐 Translate to:", list(languages.keys()))
+if lyric_line and blended_langs:
+    tgt_codes = [languages[l] for l in blended_langs]
+    blended = polyglot_blend(lyric_line, tgt_codes, creativity)
+    st.write("### **Blended Lyric Line:**")
+    st.success(blended)
 
-    if lyric_line:
-        words = lyric_line.strip().split()
-        last = words[-1].lower()
-        rhymes = get_rhymes(last)
-        if rhymes:
-            st.write(f"**Rhymes for '{last}':** {', '.join(rhymes)}")
-        else:
-            st.write(f"No rhymes found for '{last}'.")
+# -----------------------------
+# Rhyme and Syllable Support
+# -----------------------------
+if lyric_line:
+    words = lyric_line.strip().split()
+    last_word = words[-1].lower()
+    rhymes = get_rhymes(last_word)
 
-        syllables = {w: count_syllables(w) for w in words}
-        st.write("🪶 **Syllables per word:**", syllables)
-        st.write("🔢 **Total syllables:**", sum(syllables.values()))
+    if rhymes:
+        st.write(f"Rhymes for '{last_word}': {', '.join(rhymes)}")
+    else:
+        st.write(f"No rhymes found for '{last_word}'.")
 
-        translated = translate_with_model(
-            lyric_line, "en_XX", languages[tgt_lang]
-        )
-        st.success(f"**{tgt_lang} Translation:** {translated}")
-
-    st.divider()
-    st.header("Phase 2 — mBART Polyglot Lyric Blending 🌐")
-
-    blend_langs = st.multiselect(
-        "Select blend languages:",
-        list(languages.keys()),
-        default=["English", "Spanish", "Hindi", "Tamil"],
-    )
-
-    creativity = st.slider(
-        "🎨 Creativity (0 = Mostly English, 1 = Fully Multilingual)",
-        0.0, 1.0, 0.6, 0.1
-    )
-
-    if lyric_line and blend_langs:
-        code_list = [languages[l] for l in blend_langs]
-        blended = mbart_polyglot_blend(lyric_line, "en_XX", code_list, creativity)
-        st.write("### 🎶 **Blended Lyric Line:**")
-        st.success(blended)
-        st.caption("Higher creativity → more multilingual variation per line.")
-
-    st.divider()
-    st.markdown("""
-    🚀 **Next Phases**
-    - Phase 3 → Rhythmic Translation Enhancement  
-    - Phase 4 → Pronunciation & Emotion Adaptation  
-    - Phase 5 → AI Rhyme & Metaphor Engine + DAW Integration  
-    """)
-
-if __name__ == "__main__":
-    main()
+    syllables_per_word = {w: count_syllables(w) for w in words}
+    total_syllables = sum(syllables_per_word.values())
+    st.write(f"Syllables per word: {syllables_per_word}")
+    st.write(f"Total syllables in your line: {total_syllables}")
