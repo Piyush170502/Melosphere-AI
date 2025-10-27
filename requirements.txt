@@ -8,6 +8,5 @@ setuptools
 streamlit
 requests
 pronouncing
-deep-translator
-langdetect
-regex
+transformers
+sentencepiece
