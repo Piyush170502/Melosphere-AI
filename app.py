@@ -14,11 +14,11 @@ GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", None)  # safer in Streamlit sh
 
 # Initialize client
 client = translate.TranslationServiceClient(client_options={"api_key": GOOGLE_API_KEY})
-PROJECT_ID = "your-google-cloud-project-id"
+PROJECT_ID = "eighth-pursuit-476416-c8"
 LOCATION = "global"
 
 def translate_text(text, target_lang):
-    parent = f"projects/{eighth-pursuit-476416-c8}/locations/{LOCATION}"
+   parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
     try:
         response = client.translate_text(
             request={
