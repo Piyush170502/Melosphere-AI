@@ -18,3 +18,5 @@ eng-to-ipa
 pandas
 matplotlib
 phonemizer
+epitran
+indic-transliteration
