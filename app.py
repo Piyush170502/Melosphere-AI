@@ -1,260 +1,189 @@
 import streamlit as st
-import requests
-import pronouncing
-import math
+from googletrans import Translator
+import re
 
-# ------------------------
-# Helper: Translation
-# ------------------------
+translator = Translator()
 
-def translate_text(text, target_lang):
-    api_key = st.secrets.get("general", {}).get("GOOGLE_TRANSLATE_API_KEY", None)
-    if not api_key:
-        return "⚠️ Translation API key not found in Streamlit secrets. Please add it under [general] GOOGLE_TRANSLATE_API_KEY."
-    url = f"https://translation.googleapis.com/language/translate/v2?key={api_key}"
-    payload = {"q": text, "target": target_lang, "format": "text"}
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        data = response.json()
-        if "data" in data and "translations" in data["data"]:
-            return data["data"]["translations"][0]["translatedText"]
-        elif "error" in data:
-            return f"API error: {data['error'].get('message','unknown')}"
-        else:
-            return f"Unexpected response: {data}"
-    except Exception as e:
-        return f"Error during translation: {e}"
-
-# ------------------------
-# Rhymes & Syllable helpers
-# ------------------------
-
-def get_rhymes(word):
-    try:
-        response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10', timeout=6)
-        if response.status_code == 200:
-            return [item['word'] for item in response.json()]
-    except Exception:
-        pass
-    return []
-
-def count_syllables_english(word):
-    phones = pronouncing.phones_for_word(word)
-    if phones:
-        return pronouncing.syllable_count(phones[0])
-    return sum(1 for ch in word.lower() if ch in 'aeiou')
-
-def count_syllables_heuristic(text):
-    text = str(text)
-    for ch in ",.!?;:-—()\"'":
-        text = text.replace(ch, " ")
-    words = [w for w in text.split() if w.strip()]
-    syllables = 0
-    for w in words:
-        lw = w.lower()
-        groups = 0
-        prev_vowel = False
-        for ch in lw:
-            is_v = ch in "aeiouáàâäãåāéèêëēíìîïīóòôöõōúùûüūy"
-            if is_v and not prev_vowel:
-                groups += 1
-            prev_vowel = is_v
-        if groups == 0:
-            groups = 1
-        syllables += groups
-    return syllables
-
-def count_syllables_general(text, lang_code):
-    if not text or not isinstance(text, str):
-        return 0
-    if lang_code.startswith("en"):
-        words = [w for w in text.split() if w.strip()]
-        return sum(count_syllables_english(w) for w in words)
+# -------------------------------
+# Utility Functions
+# -------------------------------
+def count_syllables_general(text, lang):
+    """Approximate syllable counter based on vowel clusters."""
+    text = text.lower()
+    # Basic vowel group match per language
+    if lang in ["ja", "zh"]:
+        # Asian languages (treat each character as a syllable approximation)
+        return len(text)
+    elif lang in ["hi", "ta"]:
+        # Indic scripts: rough vowel-based estimation
+        vowels = "अआइईउऊएऐओऔािीुूेैोौंः"
+        return len([c for c in text if c in vowels])
     else:
-        return count_syllables_heuristic(text)
+        # Latin scripts
+        return len(re.findall(r"[aeiouy]+", text))
 
-# ------------------------
-# Blending Strategies
-# ------------------------
-
-def interleave_words(original, translations_by_lang):
-    tokenized = [t.split() for t in translations_by_lang]
-    max_len = max(len(t) for t in tokenized) if tokenized else 0
-    blended_tokens = []
-    for i in range(max_len):
-        for tok_list in tokenized:
-            if i < len(tok_list):
-                blended_tokens.append(tok_list[i])
-    return " ".join(blended_tokens)
-
-def phrase_swap(original, translations_by_lang):
-    segments = []
-    for t in translations_by_lang:
-        words = t.split()
-        seg_size = max(1, math.ceil(len(words) / 2))
-        segments.append(words)
-    if len(segments) == 1:
-        return translations_by_lang[0]
-    if len(segments) == 2:
-        a, b = segments
-        a_seg = a[:math.ceil(len(a) / 2)]
-        b_seg = b[math.floor(len(b) / 2):]
-        return " ".join(a_seg + b_seg)
-    assembled = []
-    for idx, words in enumerate(segments):
-        n = len(words)
-        start = math.floor(idx * n / len(segments))
-        end = math.floor((idx + 1) * n / len(segments))
-        if start < end:
-            assembled.extend(words[start:end])
-        else:
-            assembled.extend(words[: max(1, min(3, n))])
-    return " ".join(assembled)
-
-def last_word_swap(original, translations_by_lang):
-    orig_words = original.strip().split()
-    if not orig_words:
-        return original
-    for t in translations_by_lang:
-        tw = t.strip().split()
-        if tw:
-            new_last = tw[-1]
-            return " ".join(orig_words[:-1] + [new_last])
-    return original
-
-# ------------------------
-# Utility: Remove Duplicates
-# ------------------------
-
-def remove_duplicate_words(text):
+def remove_duplicates(text):
+    """Simple duplicate word removal."""
     words = text.split()
     seen = set()
-    result = []
+    deduped = []
     for w in words:
-        lw = w.lower()
-        if lw not in seen:
-            result.append(w)
-            seen.add(lw)
-    return " ".join(result)
+        if w.lower() not in seen:
+            seen.add(w.lower())
+            deduped.append(w)
+    return " ".join(deduped)
 
-# ------------------------
+def interleave_words(lang1_text, lang2_text):
+    """Alternate words from two languages."""
+    l1_words = lang1_text.split()
+    l2_words = lang2_text.split()
+    blended = []
+    for i in range(max(len(l1_words), len(l2_words))):
+        if i < len(l1_words):
+            blended.append(l1_words[i])
+        if i < len(l2_words):
+            blended.append(l2_words[i])
+    return " ".join(blended)
+
+def phrase_swap(lang1_text, lang2_text):
+    """Swap short phrases between two language lines."""
+    l1_phrases = re.split(r"[,.;:!?]", lang1_text)
+    l2_phrases = re.split(r"[,.;:!?]", lang2_text)
+    blended = []
+    for i in range(max(len(l1_phrases), len(l2_phrases))):
+        if i < len(l1_phrases):
+            blended.append(l1_phrases[i].strip())
+        if i < len(l2_phrases):
+            blended.append(l2_phrases[i].strip())
+    return " / ".join([p for p in blended if p])
+
+def last_word_swap(lang1_text, lang2_text):
+    """Swap last words between languages."""
+    l1_words = lang1_text.split()
+    l2_words = lang2_text.split()
+    if not l1_words or not l2_words:
+        return lang1_text + " / " + lang2_text
+    l1_words[-1], l2_words[-1] = l2_words[-1], l1_words[-1]
+    return " ".join(l1_words) + " / " + " ".join(l2_words)
+
+# -------------------------------
 # Streamlit UI
-# ------------------------
+# -------------------------------
+st.set_page_config(page_title="Polyglot Lyrics Studio", layout="wide")
 
-def main():
-    st.set_page_config(page_title="Melosphere — Phase 2 (Polyglot Blending)", layout="wide")
-    st.title("🎛️ Melosphere — Phase 2: Polyglot Lyric Blending")
+st.title("🎶 Polyglot Lyrics Studio")
+st.caption("Multilingual lyric translation, blending, rhythmic alignment & phonetic guidance.")
 
-    st.markdown(
-        """
-        This screen lets you generate *multiple* translations of a lyric line and blend them into a single multilingual lyric.
-        - Pick 2 or more target languages.
-        - Choose a blending mode and inspect syllable counts to preserve rhythm.
-        """
-    )
+# Phase 1: Input
+lyric_line = st.text_input("Enter an English lyric line:")
+available_languages = {
+    "Hindi": "hi",
+    "Tamil": "ta",
+    "Japanese": "ja",
+    "Spanish": "es",
+    "French": "fr",
+    "Chinese": "zh-cn",
+}
+selected = st.multiselect("Select target languages:", available_languages.keys())
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        lyric_line = st.text_area("Enter your lyric line (source language = English):", height=80)
-    with col2:
-        available_languages = {
-            "Spanish": "es",
-            "Kannada": "kn",
-            "Tamil": "ta",
-            "Malayalam": "ml",
-            "Hindi": "hi",
-            "Telugu": "te",
-            "Japanese": "ja",
-            "French": "fr",
-            "Portuguese": "pt",
-            "German": "de",
-            "Korean": "ko",
-        }
-        selected = st.multiselect("Select 2+ target languages (for blending):", options=list(available_languages.keys()), default=["Spanish", "Hindi"])
-        mode = st.selectbox("Blending mode:", ["Interleave Words", "Phrase Swap", "Last-Word Swap"])
-        show_syllables = st.checkbox("Show syllable hints / rhythm warnings", value=True)
-        show_rhymes = st.checkbox("Show English rhymes for the last word (only English)", value=True)
-        remove_duplicates = st.checkbox("Remove duplicate words in blended output", value=False)
-
-    if not lyric_line or not selected:
-        st.info("Enter a lyric line and select at least one language to see translations and blends.")
-        return
-
-    tgt_codes = [available_languages[l] for l in selected]
+# Phase 2: Translation + Polyglot Blending
+if lyric_line and selected:
+    st.subheader("🌍 Translations")
     translations = {}
-    for lang_name, code in zip(selected, tgt_codes):
-        trans = translate_text(lyric_line, code)
-        translations[lang_name] = trans
 
-    st.subheader("Translations")
-    trans_cols = st.columns(len(selected))
-    for col, lang_name in zip(trans_cols, selected):
-        with col:
-            st.markdown(f"**{lang_name} ({available_languages[lang_name]})**")
-            st.write(translations[lang_name])
-            if show_syllables:
-                sc = count_syllables_general(translations[lang_name], available_languages[lang_name])
-                st.caption(f"Approx. syllables: {sc}")
+    for lang_name in selected:
+        code = available_languages[lang_name]
+        try:
+            translated = translator.translate(lyric_line, src="en", dest=code).text
+        except Exception:
+            translated = "(Translation failed)"
+        translations[lang_name] = translated
+        st.write(f"**{lang_name}:** {translated}")
 
-    st.subheader("Blended Outputs")
-    translations_list = [translations[name] for name in selected]
-    if mode == "Interleave Words":
-        blended = interleave_words(lyric_line, translations_list)
-    elif mode == "Phrase Swap":
-        blended = phrase_swap(lyric_line, translations_list)
-    elif mode == "Last-Word Swap":
-        blended = last_word_swap(lyric_line, translations_list)
-    else:
-        blended = lyric_line
+    st.divider()
+    st.subheader("🧬 Polyglot Blending")
 
-    # ✅ Deduplication toggle
-    if remove_duplicates:
-        blended = remove_duplicate_words(blended)
+    col1, col2 = st.columns(2)
+    with col1:
+        blend_mode = st.selectbox(
+            "Blending Mode",
+            ["Interleave Words", "Phrase Swap", "Last Word Swap"]
+        )
+    with col2:
+        deduplicate = st.checkbox("🔁 Remove Duplicates", value=True)
 
-    st.markdown("**Blended lyric preview:**")
-    st.info(blended)
+    if len(selected) == 2:
+        lang1, lang2 = selected
+        text1, text2 = translations[lang1], translations[lang2]
 
-    # Rhythm analysis (unchanged)
+        if blend_mode == "Interleave Words":
+            blended = interleave_words(text1, text2)
+        elif blend_mode == "Phrase Swap":
+            blended = phrase_swap(text1, text2)
+        else:
+            blended = last_word_swap(text1, text2)
+
+        if deduplicate:
+            blended = remove_duplicates(blended)
+
+        st.success(f"**Blended ({lang1} + {lang2}):** {blended}")
+    elif len(selected) != 2:
+        st.info("ℹ️ Polyglot blending works best when exactly two languages are selected.")
+
+    st.divider()
+
+    # -------------------------------
+    # Syllable Analysis
+    # -------------------------------
+    st.subheader("🔠 Syllable Analysis")
+    show_syllables = st.checkbox("Show syllable counts", value=True)
+
     if show_syllables:
-        st.subheader("Rhythm / Syllable Analysis")
-        source_syll = count_syllables_general(lyric_line, "en")
-        st.write(f"Source (English) total syllables ≈ **{source_syll}**")
+        syllables_en = count_syllables_general(lyric_line, "en")
+        st.write(f"**English:** {syllables_en} syllables")
+
         for lang_name in selected:
             code = available_languages[lang_name]
-            t = translations[lang_name]
-            sc = count_syllables_general(t, code)
-            diff = sc - source_syll
-            if diff == 0:
-                st.success(f"{lang_name}: {sc} syllables (matches source)")
-            elif abs(diff) <= 2:
-                st.warning(f"{lang_name}: {sc} syllables ({'+' if diff>0 else ''}{diff} vs source) — near match")
-            else:
-                st.error(f"{lang_name}: {sc} syllables ({'+' if diff>0 else ''}{diff} vs source) — large mismatch. Consider editing the translation or using a different blending mode.")
+            trans_text = translations[lang_name]
+            syllables = count_syllables_general(trans_text, code)
+            st.write(f"**{lang_name}:** {syllables} syllables")
 
-    if show_rhymes:
-        last_word = lyric_line.strip().split()[-1].lower() if lyric_line.strip().split() else ""
-        if last_word:
-            rhymes = get_rhymes(last_word)
-            if rhymes:
-                st.subheader(f"English rhymes for '{last_word}'")
-                st.write(", ".join(rhymes))
-            else:
-                st.subheader("No English rhymes found")
+        st.info("Helps you adjust lyrics to keep similar syllable counts for musical rhythm.")
 
-    st.subheader("Export")
-    st.write("You can copy the blended lyric below.")
-    st.code(blended, language="text")
-    st.download_button("Download blended lyric as .txt", blended, file_name="melosphere_blended_lyric.txt")
+    # --------------------------------------------------
+    # 🎵 Rhythmic Translation Enhancements
+    # --------------------------------------------------
+    rhythmic_mode = st.checkbox("Enable Rhythmic Translation Enhancements (Experimental)", value=False)
 
-    st.markdown(
-        """
-        **Notes & limitations**
-        - Syllable counts for non-English languages are heuristic and approximate.
-        - Blending results are algorithmic suggestions — final lyrical polish is best done manually.
-        - Uses **Google Translate** (via API key) for deterministic translations.
-        """
-    )
+    if rhythmic_mode and show_syllables:
+        st.subheader("🎵 Rhythmic Alignment Analysis")
 
+        def rhythm_bar(count, target_count):
+            symbol = "●"
+            return " ".join([symbol] * count) if count > 0 else "–"
 
-if __name__ == "__main__":
-    main()
+        source_syll = count_syllables_general(lyric_line, "en")
+
+        st.write(f"**Source rhythm ({source_syll} syllables):**")
+        st.code(rhythm_bar(source_syll, source_syll))
+
+        for lang_name in selected:
+            code = available_languages[lang_name]
+            trans_text = translations[lang_name]
+            syllables = count_syllables_general(trans_text, code)
+            diff = syllables - source_syll
+
+            # Color-coded rhythm feedback
+            color = "green" if diff == 0 else "orange" if abs(diff) <= 2 else "red"
+            st.markdown(
+                f"""
+                <div style="margin-bottom:10px">
+                    <b style="color:{color}">{lang_name} ({syllables} syllables):</b><br>
+                    <code>{rhythm_bar(syllables, source_syll)}</code><br>
+                    {"✅ Perfect match" if diff==0 else "🟡 Near match" if abs(diff)<=2 else "🔴 Off-beat – consider editing translation"}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.info("These rhythm bars help visualize syllable alignment — aim for near or perfect matches for singable translations.")
