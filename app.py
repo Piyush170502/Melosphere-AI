@@ -1,93 +1,88 @@
 import streamlit as st
-import json
+import requests
+import pronouncing
 import os
-from google.cloud import translate_v2 as translate
-import random
 
-# -----------------------------
-# Set up Google Translate client
-# -----------------------------
+# ========================
+# Google Translation API
+# ========================
 
-# Load secret JSON and write to a temp file
-gcloud_key = json.loads(st.secrets["GOOGLE_API_KEY_JSON"])
-with open("gcloud_key.json", "w") as f:
-    json.dump(gcloud_key, f)
-
-# Set environment variable for Google SDK
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcloud_key.json"
-
-translate_client = translate.Client()
-
-# -----------------------------
-# Language codes for blending
-# -----------------------------
-languages = {
-    "Hindi": "hi",
-    "Tamil": "ta",
-    "Telugu": "te",
-    "Malayalam": "ml",
-    "Japanese": "ja",
-    "English": "en"
-}
-
-# -----------------------------
-# Helper Functions
-# -----------------------------
 def translate_text(text, target_lang):
-    """Translate a text string to a target language using Google Translate."""
-    if target_lang == "en":
-        return text  # Keep English as-is
-    result = translate_client.translate(text, target_language=target_lang)
-    return result["translatedText"]
+    api_key = st.secrets["general"]["GOOGLE_TRANSLATE_API_KEY"]
+    url = f"https://translation.googleapis.com/language/translate/v2?key={api_key}"
+    payload = {
+        "q": text,
+        "target": target_lang,
+        "format": "text"
+    }
 
-def polyglot_blend(text, blend_languages, intensity=2):
-    """
-    Blend a text line into multiple languages.
-    :param text: original English line
-    :param blend_languages: list of language codes
-    :param intensity: number of words to translate per language
-    """
-    words = text.split()
-    blended_words = []
-
-    for i, word in enumerate(words):
-        # Randomly pick a language based on intensity
-        if blend_languages and random.random() < (intensity / 10):
-            lang = random.choice(blend_languages)
-            translated_word = translate_text(word, lang)
-            blended_words.append(translated_word)
+    try:
+        response = requests.post(url, json=payload)
+        data = response.json()
+        if "data" in data and "translations" in data["data"]:
+            return data["data"]["translations"][0]["translatedText"]
         else:
-            blended_words.append(word)
-    return " ".join(blended_words)
+            return f"Error: {data}"
+    except Exception as e:
+        return f"Error during translation: {e}"
 
-# -----------------------------
-# Streamlit UI
-# -----------------------------
-st.set_page_config(page_title="Polyglot Lyric Blending", layout="wide")
-st.title("🎵 Polyglot Lyric Blending")
+# ========================
+# Rhyming and Syllables
+# ========================
 
-st.write(
-    "Enter your lyric line in English, and blend it with multiple languages "
-    "like Hindi, Tamil, Telugu, Malayalam, and Japanese!"
-)
-
-lyric_line = st.text_input("Enter English lyric line:")
-
-st.write("### Select languages for blending:")
-selected_langs = st.multiselect(
-    "Languages",
-    options=list(languages.keys()),
-    default=["Hindi", "Tamil", "Telugu", "Malayalam", "Japanese"]
-)
-
-intensity = st.slider(
-    "Blending intensity (higher = more words translated):", min_value=1, max_value=10, value=3
-)
-
-if st.button("Blend Lyric"):
-    if lyric_line.strip() == "":
-        st.warning("Please enter a lyric line first.")
+def get_rhymes(word):
+    response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
+    if response.status_code == 200:
+        rhymes = [item['word'] for item in response.json()]
+        return rhymes
     else:
-        blend_codes = [languages[lang] for lang in selected_langs]
-        blended_line = polyglot_blend(lyric_line, blend_codes, intensity)
-        st.success(blended_line)
+        return []
+
+def count_syllables(word):
+    phones = pronouncing.phones_for_word(word)
+    if phones:
+        return pronouncing.syllable_count(phones[0])
+    else:
+        return sum(1 for char in word.lower() if char in 'aeiou')
+
+# ========================
+# Streamlit App
+# ========================
+
+def main():
+    st.title("🎵 Melosphere AI - Lyrics Without Limits")
+
+    lyric_line = st.text_input("Enter your Lyric Line (English):")
+
+    languages = {
+        "Spanish": "es",
+        "Kannada": "kn",
+        "Tamil": "ta",
+        "Malayalam": "ml",
+        "Hindi": "hi",
+        "Telugu": "te",
+        "Japanese": "ja",
+    }
+
+    tgt_lang = st.selectbox("Select target language for translation:", list(languages.keys()))
+
+    if lyric_line:
+        words = lyric_line.strip().split()
+        last_word = words[-1].lower()
+
+        rhymes = get_rhymes(last_word)
+        if rhymes:
+            st.write(f"**Rhymes for '{last_word}':** {', '.join(rhymes)}")
+        else:
+            st.write(f"No rhymes found for '{last_word}'.")
+
+        syllables_per_word = {w: count_syllables(w) for w in words}
+        total_syllables = sum(syllables_per_word.values())
+        st.write(f"**Syllables per word:** {syllables_per_word}")
+        st.write(f"**Total syllables:** {total_syllables}")
+
+        translation = translate_text(lyric_line, languages[tgt_lang])
+        st.write(f"**{tgt_lang} Translation:** {translation}")
+
+if __name__ == "__main__":
+    main()
