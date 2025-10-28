@@ -140,6 +140,7 @@ def phrase_swap(original, translations_by_lang):
     segments = []
     for t in translations_by_lang:
         words = t.split()
+        seg_size = max(1, math.ceil(len(words) / 2))
         segments.append(words)
     if len(segments) == 1:
         return translations_by_lang[0]
@@ -184,10 +185,6 @@ def remove_consecutive_duplicates(text):
             out.append(w)
     return " ".join(out)
 
-# ------------------------
-# Dots + Chart
-# ------------------------
-
 def syllable_dots(count, cap=40):
     dots = "● " * min(count, cap)
     if count > cap:
@@ -206,20 +203,8 @@ def plot_syllable_comparison(orig_syll, trans_before, trans_after):
     return fig
 
 # ------------------------
-# Pronunciation Helpers
+# Pronunciation helper (NEW)
 # ------------------------
-
-def ipa_transcription(text):
-    ipa = text.lower()
-    ipa = ipa.replace("th", "θ").replace("sh", "ʃ").replace("ch", "tʃ").replace("ph", "f")
-    ipa = ipa.replace("a", "ɑ").replace("e", "ɛ").replace("i", "iː").replace("o", "ɔ").replace("u", "uː")
-    return re.sub(r"[^ɑɛiːɔuːθʃtʃf\s]", "", ipa)
-
-def simple_phonetic(text):
-    t = text.lower()
-    t = t.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
-    t = t.replace("ñ", "ny").replace("ç", "s")
-    return re.sub(r"[^a-z\s]", "", t)
 
 @st.cache_data(show_spinner=False)
 def generate_tts_audio(text, lang_code):
@@ -232,23 +217,38 @@ def generate_tts_audio(text, lang_code):
         b64 = base64.b64encode(audio_bytes).decode()
         return f'<audio controls src="data:audio/mp3;base64,{b64}"></audio>'
     except Exception as e:
-        return f"⚠️ Audio generation failed: {e}"
+        return f"<i>Audio unavailable: {e}</i>"
+
+def simplified_phonetic(text):
+    t = text.lower()
+    replacements = {
+        "á":"a", "é":"e", "í":"i", "ó":"o", "ú":"u",
+        "ñ":"ny", "ç":"s", "ü":"u", "ä":"a", "ö":"o",
+        "ph":"f", "th":"t", "sh":"sh"
+    }
+    for k,v in replacements.items():
+        t = t.replace(k,v)
+    return re.sub(r"[^a-z\s]", "", t)
+
+def ipa_transcription(text):
+    ipa = text.lower()
+    ipa = ipa.replace("a", "ɑ").replace("e", "ɛ").replace("i", "iː").replace("o", "ɔ").replace("u", "uː")
+    ipa = ipa.replace("th", "θ").replace("sh", "ʃ").replace("ch", "tʃ").replace("ph", "f")
+    return re.sub(r"[^ɑɛiːɔuːθʃtʃf\s]", "", ipa)
 
 # ------------------------
-# Streamlit UI
+# Main App (unchanged + added Pronunciation section at end)
 # ------------------------
 
 def main():
     st.set_page_config(page_title="Melosphere — Phase 2 (Polyglot Blending)", layout="wide")
     st.title("🎛️ Melosphere — Phase 2: Polyglot Lyric Blending")
 
-    st.markdown(
-        """
+    st.markdown("""
         This screen lets you generate *multiple* translations of a lyric line and blend them into a single multilingual lyric.
         - Pick 2 or more target languages.
         - Choose a blending mode and inspect syllable counts to preserve rhythm.
-        """
-    )
+    """)
 
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -276,9 +276,7 @@ def main():
         return
 
     tgt_codes = [available_languages[l] for l in selected]
-    translations_clean = {}
-    translations_enhanced = {}
-    overall_stats = {}
+    translations_clean, translations_enhanced, overall_stats = {}, {}, {}
 
     for lang_name, code in zip(selected, tgt_codes):
         trans = translate_text(lyric_line, code)
@@ -296,14 +294,8 @@ def main():
         else:
             translations_clean[lang_name] = enhanced
             translations_enhanced[lang_name] = enhanced
-        overall_stats[lang_name] = {
-            "orig_syll": orig_syll,
-            "trans_before": trans_before,
-            "trans_after": trans_after,
-            "diff": diff
-        }
+        overall_stats[lang_name] = {"orig_syll": orig_syll, "trans_before": trans_before, "trans_after": trans_after, "diff": diff}
 
-    # Translations
     st.subheader("Translations")
     trans_cols = st.columns(len(selected))
     for col, lang_name in zip(trans_cols, selected):
@@ -312,10 +304,9 @@ def main():
             st.markdown(f"**{lang_name} ({code})**")
             st.write(translations_clean[lang_name])
             if show_syllables:
-                sc = count_syllables_general(translations_clean[lang_name], code)
+                sc = count_syllables_general(translations_clean[lang_name], available_languages[lang_name])
                 st.caption(f"Approx. syllables: {sc}")
 
-    # Blending
     st.subheader("Blended Outputs")
     translations_list_for_blend = [translations_enhanced[name] for name in selected]
     if mode == "Interleave Words":
@@ -330,7 +321,6 @@ def main():
     st.markdown("**Blended lyric preview:**")
     st.info(blended)
 
-    # Rhythm analysis
     if show_syllables:
         st.subheader("Rhythm / Syllable Analysis")
         source_syll = count_syllables_general(lyric_line, "en")
@@ -355,14 +345,12 @@ def main():
             st.write(f"- Enhanced translation syllables: {sc_enhanced}  {dots_enh}")
             st.markdown(f"- **Status:** <span style='color:{status[1]}'>{status[0]}</span>", unsafe_allow_html=True)
 
-    # Chart toggle
     if show_plot:
         chart_lang = selected[0]
         stats = overall_stats[chart_lang]
         fig = plot_syllable_comparison(stats["orig_syll"], stats["trans_before"], stats["trans_after"])
         st.plotly_chart(fig, use_container_width=True)
 
-    # Rhymes
     if show_rhymes:
         last_word = lyric_line.strip().split()[-1].lower() if lyric_line.strip().split() else ""
         if last_word:
@@ -373,30 +361,32 @@ def main():
             else:
                 st.subheader("No English rhymes found")
 
-    # ------------------------
-    # Pronunciation Guide
-    # ------------------------
-    st.subheader("🎤 Pronunciation Guide")
-    use_simple = st.toggle("See simplified phonetic style", value=False)
-    for lang_name in selected:
-        code = available_languages[lang_name]
-        text = translations_clean[lang_name]
-        ipa = ipa_transcription(text)
-        simp = simple_phonetic(text)
-        st.markdown(f"**{lang_name} ({code})**")
-        st.write(simp if use_simple else ipa)
-        st.markdown(generate_tts_audio(text, code), unsafe_allow_html=True)
-
-    # ------------------------
-    # Export
-    # ------------------------
     st.subheader("Export")
     st.write("You can copy the blended lyric below.")
     st.code(blended, language="text")
     st.download_button("Download blended lyric as .txt", blended, file_name="melosphere_blended_lyric.txt")
 
-    st.markdown(
-        """
+    # ------------------------
+    # NEW: Pronunciation Guide System
+    # ------------------------
+    st.subheader("🎙️ Pronunciation Guide")
+    show_simple = st.toggle("See simplified style (default = IPA)", value=False)
+
+    for lang_name in selected:
+        code = available_languages[lang_name]
+        text = translations_clean[lang_name]
+        ipa = ipa_transcription(text)
+        simp = simplified_phonetic(text)
+        st.markdown(f"**{lang_name} pronunciation:**")
+        st.markdown(simp if show_simple else ipa)
+        st.markdown(generate_tts_audio(text, code), unsafe_allow_html=True)
+
+    st.markdown("""
         **Notes & limitations**
-        - Syllable counts for non-English languages are heuristic and approximate.
-        - Rhythmic enhancement uses natural fillers and inserts them sensibly (
+        - Syllable counts for non-English languages are heuristic.
+        - Fillers placed naturally before punctuation for rhythm.
+        - Pronunciation guide offers IPA or simplified spellings + audio.
+    """)
+
+if __name__ == "__main__":
+    main()
