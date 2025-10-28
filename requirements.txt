@@ -11,4 +11,7 @@ pronouncing
 googletrans==4.0.0-rc1
 google-cloud-translate==3.15.3
 plotly
+gTTS
+eng_to_ipa
+pydub
 
