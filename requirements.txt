@@ -8,5 +8,5 @@ setuptools
 streamlit
 requests
 pronouncing
-google-cloud-translate==3.15.0
+google-cloud-translate==3.15.3
 
