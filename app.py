@@ -8,26 +8,32 @@ import plotly.graph_objects as go
 from gtts import gTTS
 import tempfile
 import base64
+from google.cloud import translate_v2 as translate
+from google.oauth2 import service_account
 
 # ------------------------
-# Helper: Translation (Official Google API)
+# Google Cloud Translate Setup
 # ------------------------
+
+@st.cache_resource
+def get_translate_client():
+    try:
+        credentials_info = st.secrets["gcp_service_account"]
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        client = translate.Client(credentials=credentials)
+        return client
+    except Exception as e:
+        st.error(f"Google Translate API initialization error: {e}")
+        return None
+
+translate_client = get_translate_client()
 
 def translate_text(text, target_lang):
-    api_key = st.secrets.get("general", {}).get("GOOGLE_TRANSLATE_API_KEY", None)
-    if not api_key:
-        return "⚠️ Translation API key not found in Streamlit secrets. Please add it under [general] GOOGLE_TRANSLATE_API_KEY."
-    url = f"https://translation.googleapis.com/language/translate/v2?key={api_key}"
-    payload = {"q": text, "target": target_lang, "format": "text"}
+    if not translate_client:
+        return "⚠️ Translation client not initialized. Check your credentials in Streamlit secrets."
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        data = response.json()
-        if "data" in data and "translations" in data["data"]:
-            return data["data"]["translations"][0]["translatedText"]
-        elif "error" in data:
-            return f"API error: {data['error'].get('message','unknown')}"
-        else:
-            return f"Unexpected response: {data}"
+        result = translate_client.translate(text, target_language=target_lang)
+        return result["translatedText"]
     except Exception as e:
         return f"Error during translation: {e}"
 
@@ -203,7 +209,7 @@ def plot_syllable_comparison(orig_syll, trans_before, trans_after):
     return fig
 
 # ------------------------
-# Pronunciation helper
+# Pronunciation helpers
 # ------------------------
 
 @st.cache_data(show_spinner=False)
@@ -222,12 +228,12 @@ def generate_tts_audio(text, lang_code):
 def simplified_phonetic(text):
     t = text.lower()
     replacements = {
-        "á":"a", "é":"e", "í":"i", "ó":"o", "ú":"u",
-        "ñ":"ny", "ç":"s", "ü":"u", "ä":"a", "ö":"o",
-        "ph":"f", "th":"t", "sh":"sh"
+        "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u",
+        "ñ": "ny", "ç": "s", "ü": "u", "ä": "a", "ö": "o",
+        "ph": "f", "th": "t", "sh": "sh"
     }
-    for k,v in replacements.items():
-        t = t.replace(k,v)
+    for k, v in replacements.items():
+        t = t.replace(k, v)
     return re.sub(r"[^a-z\s]", "", t)
 
 def ipa_transcription(text):
@@ -245,33 +251,30 @@ def main():
     st.title("🎛️ Melosphere — Phase 2: Polyglot Lyric Blending")
 
     st.markdown("""
-        Generate *multiple translations* of a lyric line and blend them into a multilingual lyric.  
-        - Pick 2+ target languages  
-        - Choose blending mode  
-        - Compare rhythm & pronunciation  
+        Generate *multiple translations* of a lyric and blend them into a multilingual version.
+        Choose blending mode, inspect syllable rhythm, and listen to pronunciation.
     """)
 
     col1, col2 = st.columns([2, 1])
     with col1:
-        lyric_line = st.text_area("Enter your lyric line (English):", height=80)
+        lyric_line = st.text_area("Enter your lyric line (source = English):", height=80)
     with col2:
         available_languages = {
-            "Spanish": "es", "Kannada": "kn", "Tamil": "ta",
-            "Malayalam": "ml", "Hindi": "hi", "Telugu": "te",
-            "Japanese": "ja", "French": "fr", "Portuguese": "pt",
+            "Spanish": "es", "Kannada": "kn", "Tamil": "ta", "Malayalam": "ml", "Hindi": "hi",
+            "Telugu": "te", "Japanese": "ja", "French": "fr", "Portuguese": "pt",
             "German": "de", "Korean": "ko"
         }
-        selected = st.multiselect("Select target languages:", options=list(available_languages.keys()), default=["Spanish", "Hindi"])
+        selected = st.multiselect("Select 2+ target languages:", list(available_languages.keys()), default=["Spanish", "Hindi"])
         mode = st.selectbox("Blending mode:", ["Interleave Words", "Phrase Swap", "Last-Word Swap"])
         enhance_rhythm = st.checkbox("✨ Rhythmic Enhancement", value=True)
         fillers_in_blend_only = st.checkbox("Show fillers only in blended output", value=True)
-        show_plot = st.checkbox("Show syllable chart", value=False)
-        show_dots = st.checkbox("Show syllable dots", value=False)
-        show_syllables = st.checkbox("Show syllable counts", value=True)
-        show_rhymes = st.checkbox("Show English rhymes", value=True)
+        show_plot = st.checkbox("Show syllable comparison chart", value=False)
+        show_dots = st.checkbox("Show syllable dots visual", value=False)
+        show_syllables = st.checkbox("Show syllable hints / rhythm warnings", value=True)
+        show_rhymes = st.checkbox("Show English rhymes for the last word", value=True)
 
     if not lyric_line or not selected:
-        st.info("Enter a lyric line and select at least one language.")
+        st.info("Enter a lyric line and select at least one target language.")
         return
 
     tgt_codes = [available_languages[l] for l in selected]
@@ -287,6 +290,7 @@ def main():
             trans_before = count_syllables_general(trans, code)
             trans_after = trans_before
             diff = orig_syll - trans_before
+
         if fillers_in_blend_only:
             translations_clean[lang_name] = trans
             translations_enhanced[lang_name] = enhanced
@@ -303,27 +307,27 @@ def main():
             st.markdown(f"**{lang_name} ({code})**")
             st.write(translations_clean[lang_name])
             if show_syllables:
-                sc = count_syllables_general(translations_clean[lang_name], available_languages[lang_name])
+                sc = count_syllables_general(translations_clean[lang_name], code)
                 st.caption(f"Approx. syllables: {sc}")
 
+    # Blended output
     st.subheader("Blended Outputs")
     translations_list_for_blend = [translations_enhanced[name] for name in selected]
     if mode == "Interleave Words":
         blended = interleave_words(lyric_line, translations_list_for_blend)
     elif mode == "Phrase Swap":
         blended = phrase_swap(lyric_line, translations_list_for_blend)
-    elif mode == "Last-Word Swap":
-        blended = last_word_swap(lyric_line, translations_list_for_blend)
     else:
-        blended = lyric_line
-    blended = remove_consecutive_duplicates(blended)
-    st.markdown("**Blended lyric preview:**")
-    st.info(blended)
+        blended = last_word_swap(lyric_line, translations_list_for_blend)
 
+    blended = remove_consecutive_duplicates(blended)
+    st.info(f"**Blended lyric preview:**\n{blended}")
+
+    # Rhythm/Syllables
     if show_syllables:
         st.subheader("Rhythm / Syllable Analysis")
         source_syll = count_syllables_general(lyric_line, "en")
-        st.write(f"English syllables ≈ **{source_syll}**")
+        st.write(f"Source (English) syllables ≈ **{source_syll}**")
         for lang_name in selected:
             code = available_languages[lang_name]
             clean_text = translations_clean[lang_name]
@@ -334,14 +338,14 @@ def main():
             dots_enh = syllable_dots(sc_enhanced) if show_dots else ""
             diff_enh = sc_enhanced - source_syll
             if diff_enh == 0:
-                status = ("✅ matches", "green")
+                status = ("✅ matches source", "green")
             elif abs(diff_enh) <= 2:
                 status = (f"🟡 near match ({'+' if diff_enh>0 else ''}{diff_enh})", "orange")
             else:
                 status = (f"🔴 mismatch ({'+' if diff_enh>0 else ''}{diff_enh})", "red")
             st.markdown(f"**{lang_name}**")
-            st.write(f"- Clean syllables: {sc_clean}  {dots_clean}")
-            st.write(f"- Enhanced syllables: {sc_enhanced}  {dots_enh}")
+            st.write(f"- Clean syllables: {sc_clean} {dots_clean}")
+            st.write(f"- Enhanced syllables: {sc_enhanced} {dots_enh}")
             st.markdown(f"- **Status:** <span style='color:{status[1]}'>{status[0]}</span>", unsafe_allow_html=True)
 
     if show_plot:
@@ -357,16 +361,13 @@ def main():
             if rhymes:
                 st.subheader(f"English rhymes for '{last_word}'")
                 st.write(", ".join(rhymes))
-            else:
-                st.subheader("No rhymes found")
 
+    # Export
     st.subheader("Export")
     st.code(blended, language="text")
     st.download_button("Download blended lyric", blended, file_name="melosphere_blended_lyric.txt")
 
-    # ------------------------
-    # Pronunciation Guide Section (IPA default, toggle simplified)
-    # ------------------------
+    # Pronunciation Guide
     st.subheader("🎙️ Pronunciation Guide")
     show_simple = st.toggle("See simplified style (default = IPA)", value=False)
 
@@ -379,11 +380,11 @@ def main():
         st.markdown(simp if show_simple else ipa)
         st.markdown(generate_tts_audio(text, code), unsafe_allow_html=True)
 
-    st.markdown("""
+    st.caption("""
         **Notes**
         - Syllable counts for non-English are heuristic.
-        - Fillers maintain rhythmic flow.
-        - Pronunciation shows IPA by default; toggle for simplified.
+        - Pronunciation supports both IPA and simplified views.
+        - Uses Google Cloud official Translate API (fast + reliable).
     """)
 
 if __name__ == "__main__":
