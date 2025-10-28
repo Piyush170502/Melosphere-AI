@@ -1,189 +1,244 @@
 import streamlit as st
 import requests
 import pronouncing
-import os
-import tempfile
+import math
 import plotly.graph_objects as go
-from googletrans import Translator
 from gtts import gTTS
-import eng_to_ipa as ipa
-from pydub import AudioSegment
-from pydub.playback import play
+import tempfile
+import base64
+from google.cloud import translate_v2 as translate
+import os
+import re
 
-# ======================================
-# Utility: Translate text (GoogleTrans)
-# ======================================
-
-def translate_text(text, target_lang):
-    translator = Translator()
+# ------------------------
+# Setup Google Translate client
+# ------------------------
+def get_translate_client():
     try:
-        translation = translator.translate(text, dest=target_lang)
-        return translation.text
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = st.secrets["general"]["GOOGLE_APPLICATION_CREDENTIALS"]
+    except Exception:
+        pass
+    return translate.Client()
+
+translator_client = get_translate_client()
+
+# ------------------------
+# Translation Helper
+# ------------------------
+def translate_text(text, target_lang):
+    try:
+        result = translator_client.translate(text, target_language=target_lang)
+        return result["translatedText"]
     except Exception as e:
-        return f"Error during translation: {e}"
+        return f"⚠️ Translation failed: {e}"
 
-# ======================================
-# Utility: Syllable & Rhymes
-# ======================================
-
+# ------------------------
+# Rhymes & Syllables
+# ------------------------
 def get_rhymes(word):
-    response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10')
-    if response.status_code == 200:
-        return [item['word'] for item in response.json()]
+    try:
+        response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10', timeout=6)
+        if response.status_code == 200:
+            return [item['word'] for item in response.json()]
+    except Exception:
+        pass
     return []
 
-def count_syllables(word):
+def count_syllables_english(word):
     phones = pronouncing.phones_for_word(word)
     if phones:
         return pronouncing.syllable_count(phones[0])
-    else:
-        return sum(1 for ch in word.lower() if ch in 'aeiou')
+    return sum(1 for ch in word.lower() if ch in 'aeiou')
 
-def syllable_dots(count):
-    return "•" * count
-
-# ======================================
-# Pronunciation Guide System
-# ======================================
-
-def get_pronunciations(text, simplified=False):
+def count_syllables_heuristic(text):
+    if not text:
+        return 0
+    text = re.sub(r"[^a-zA-Záàâäãåāéèêëēíìîïīóòôöõōúùûüūy\s]", " ", str(text))
     words = text.split()
-    ipa_text = []
-    simple_text = []
+    syllables = 0
     for w in words:
-        ipa_form = ipa.convert(w)
-        ipa_text.append(ipa_form if ipa_form else w)
-        simple_form = w.replace("th", "t").replace("ph", "f").replace("gh", "g")
-        simple_text.append(simple_form)
-    if simplified:
-        return " ".join(simple_text)
+        lw = w.lower()
+        groups = 0
+        prev_vowel = False
+        for ch in lw:
+            is_v = ch in "aeiouáàâäãåāéèêëēíìîïīóòôöõōúùûüūy"
+            if is_v and not prev_vowel:
+                groups += 1
+            prev_vowel = is_v
+        if groups == 0:
+            groups = 1
+        syllables += groups
+    return syllables
+
+def count_syllables_general(text, lang_code):
+    if lang_code.startswith("en"):
+        words = [w for w in text.split() if w.strip()]
+        return sum(count_syllables_english(w) for w in words)
+    return count_syllables_heuristic(text)
+
+# ------------------------
+# Rhythmic Enhancement (natural fillers)
+# ------------------------
+FILLERS = ["oh", "yeah", "ah", "la", "na", "hey", "woo", "mmm"]
+
+def enhance_rhythm(translation, target_syllables):
+    words = translation.split()
+    current_syllables = count_syllables_heuristic(translation)
+    diff = target_syllables - current_syllables
+    if diff <= 0:
+        return translation
+
+    insert_positions = []
+    if len(words) > 2:
+        insert_positions = list(range(1, len(words), max(1, len(words)//diff)))
     else:
-        return " ".join(ipa_text)
+        insert_positions = [len(words)//2] * diff
 
-def generate_audio(text, lang="en"):
+    new_words = []
+    filler_index = 0
+    for i, word in enumerate(words):
+        new_words.append(word)
+        if i in insert_positions and diff > 0:
+            new_words.append(FILLERS[filler_index % len(FILLERS)])
+            filler_index += 1
+            diff -= 1
+    return " ".join(new_words)
+
+# ------------------------
+# Stress/Beat Alignment (placeholder logic)
+# ------------------------
+def stress_align(translation, target_syllables):
+    # Placeholder for real beat-matching logic
+    # Slight rhythm adjustment markers (⋅) for visually balanced alignment
+    words = translation.split()
+    adjusted = []
+    beat_ratio = max(1, target_syllables // (len(words) + 1))
+    for i, w in enumerate(words):
+        adjusted.append(w)
+        if (i + 1) % beat_ratio == 0:
+            adjusted.append("⋅")
+    return " ".join(adjusted)
+
+# ------------------------
+# Phonetic Transcription Helpers
+# ------------------------
+def simple_phonetic(text):
+    translit = text.lower()
+    translit = translit.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+    translit = translit.replace("ñ", "ny").replace("ç", "s")
+    translit = re.sub(r"[^a-z\s]", "", translit)
+    return translit
+
+def ipa_transcription(text):
+    # Very approximate placeholder IPA
+    ipa = text.lower()
+    ipa = ipa.replace("a", "ɑ").replace("e", "ɛ").replace("i", "iː").replace("o", "ɔ").replace("u", "uː")
+    ipa = ipa.replace("th", "θ").replace("sh", "ʃ").replace("ch", "tʃ").replace("ph", "f")
+    ipa = re.sub(r"[^ɑɛiːɔuːθʃtʃf\s]", "", ipa)
+    return ipa
+
+def generate_tts_audio(text, lang_code):
     try:
-        tts = gTTS(text=text, lang=lang)
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        tts.save(tmp.name)
-        return tmp.name
+        tts = gTTS(text=text, lang=lang_code)
+        temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        tts.save(temp_path.name)
+        with open(temp_path.name, "rb") as f:
+            audio_bytes = f.read()
+        b64 = base64.b64encode(audio_bytes).decode()
+        return f'<audio controls src="data:audio/mp3;base64,{b64}"></audio>'
     except Exception as e:
-        return None
+        return f"⚠️ Audio generation failed: {e}"
 
-# ======================================
-# Rhythmic Enhancements
-# ======================================
+# ------------------------
+# Visualization Helpers
+# ------------------------
+def syllable_dots(count):
+    return "• " * int(count)
 
-def rhythmic_adjustment(source_line, target_line):
-    src_syllables = sum(count_syllables(w) for w in source_line.split())
-    tgt_syllables = sum(count_syllables(w) for w in target_line.split())
-
-    fillers = ["oh", "yeah", "ah", "na", "la"]
-    adjusted_line = target_line
-
-    diff = src_syllables - tgt_syllables
-    if diff > 0:
-        insert_positions = list(range(1, len(target_line.split()), max(1, len(target_line.split()) // diff)))[:diff]
-        words = target_line.split()
-        for i, pos in enumerate(insert_positions):
-            if pos < len(words):
-                words.insert(pos, fillers[i % len(fillers)])
-        adjusted_line = " ".join(words)
-
-    return adjusted_line
-
-# ======================================
-# Syllable Visualizer
-# ======================================
-
-def plot_syllable_comparison(src, tgt):
-    src_s = sum(count_syllables(w) for w in src.split())
-    tgt_s = sum(count_syllables(w) for w in tgt.split())
-
+def plot_syllable_chart(data_dict, source_syllables):
+    langs = list(data_dict.keys())
+    values = list(data_dict.values())
+    colors = ['#1f77b4' if abs(v - source_syllables) <= 2 else '#ff7f0e' for v in values]
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=["Source"], y=[src_s], name="Source", marker_color="#1f77b4"))
-    fig.add_trace(go.Bar(x=["Target"], y=[tgt_s], name="Target", marker_color="#ff7f0e"))
-    fig.update_layout(
-        title="Syllable Count Comparison",
-        xaxis_title="Line Type",
-        yaxis_title="Syllables",
-        barmode="group",
-        height=300,
-    )
+    fig.add_trace(go.Bar(x=langs, y=values, marker_color=colors))
+    fig.add_hline(y=source_syllables, line_dash="dot", annotation_text="Source Syllables", annotation_position="top right")
+    fig.update_layout(height=300, title="Syllable Comparison Across Languages", xaxis_title="Language", yaxis_title="Syllables")
     return fig
 
-# ======================================
-# Streamlit App
-# ======================================
-
+# ------------------------
+# Streamlit UI
+# ------------------------
 def main():
-    st.title("🎵 Melosphere AI - Lyrics Without Limits")
+    st.set_page_config(page_title="Melosphere — Polyglot + Rhythm + Phonetics", layout="wide")
+    st.title("🎶 Melosphere — Polyglot Blending + Rhythmic & Pronunciation System")
 
-    lyric_line = st.text_input("Enter your Lyric Line (English):")
+    st.markdown("""
+    Combine multilingual lyric translations with rhythmic alignment and pronunciation guidance.
+    """)
 
-    languages = {
-        "Spanish": "es",
-        "Kannada": "kn",
-        "Tamil": "ta",
-        "Malayalam": "ml",
-        "Hindi": "hi",
-        "Telugu": "te",
-        "Japanese": "ja",
-    }
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        lyric_line = st.text_area("Enter your lyric line (English):", height=80)
+    with col2:
+        available_languages = {
+            "Spanish": "es", "Kannada": "kn", "Tamil": "ta", "Malayalam": "ml",
+            "Hindi": "hi", "Telugu": "te", "Japanese": "ja", "French": "fr",
+            "Portuguese": "pt", "German": "de", "Korean": "ko"
+        }
+        selected = st.multiselect("Select 2+ target languages:", list(available_languages.keys()), default=["Spanish", "Hindi"])
+        mode = st.selectbox("Blending mode:", ["Interleave Words", "Phrase Swap", "Last-Word Swap"])
+        show_chart = st.checkbox("Show syllable comparison chart", value=False)
+        show_rhythm = st.checkbox("Apply rhythmic enhancement", value=False)
+        show_stress = st.checkbox("Show stress/beat alignment", value=False)
+        phonetic_toggle = st.toggle("Show simplified phonetic style (default = IPA)", value=False)
 
-    tgt_lang = st.selectbox("Select target language for translation:", list(languages.keys()))
-    show_chart = st.toggle("Show Syllable Chart")
-    show_pronunciation = st.toggle("Show Pronunciation Guide")
-    simplified_toggle = st.toggle("Show Simplified Phonetic Style")
+    if not lyric_line or not selected:
+        st.info("Enter a lyric line and select languages.")
+        return
 
-    if lyric_line:
-        # --- Rhymes ---
-        words = lyric_line.strip().split()
-        last_word = words[-1].lower()
-        rhymes = get_rhymes(last_word)
-        if rhymes:
-            st.write(f"**Rhymes for '{last_word}':** {', '.join(rhymes)}")
-        else:
-            st.write(f"No rhymes found for '{last_word}'.")
+    # Translations
+    tgt_codes = [available_languages[l] for l in selected]
+    translations = {}
+    for lang_name, code in zip(selected, tgt_codes):
+        trans = translate_text(lyric_line, code)
+        if show_rhythm:
+            trans = enhance_rhythm(trans, count_syllables_general(lyric_line, "en"))
+        if show_stress:
+            trans = stress_align(trans, count_syllables_general(lyric_line, "en"))
+        translations[lang_name] = trans
 
-        # --- Translation ---
-        translation = translate_text(lyric_line, languages[tgt_lang])
+    st.subheader("Translations")
+    cols = st.columns(len(selected))
+    for col, lang_name in zip(cols, selected):
+        with col:
+            st.markdown(f"**{lang_name}**")
+            st.write(translations[lang_name])
 
-        # --- Rhythmic Enhancement ---
-        rhythmic_version = rhythmic_adjustment(lyric_line, translation)
+    # Syllables
+    st.subheader("Syllable Analysis")
+    src_syll = count_syllables_general(lyric_line, "en")
+    syll_counts = {l: count_syllables_general(t, available_languages[l]) for l, t in translations.items()}
+    st.write(f"**Source (English):** {src_syll} syllables")
+    for l, s in syll_counts.items():
+        diff = s - src_syll
+        st.write(f"{l}: {s} ({'+' if diff>0 else ''}{diff})  {syllable_dots(s)}")
 
-        # --- Pronunciation Guides ---
-        if show_pronunciation:
-            st.subheader("🎙️ Pronunciation Guide")
-            ipa_version = get_pronunciations(translation, simplified=False)
-            simplified_version = get_pronunciations(translation, simplified=True)
-            if simplified_toggle:
-                st.text_area("Simplified Phonetic Style:", simplified_version, height=100)
-            else:
-                st.text_area("IPA Style Transcription:", ipa_version, height=100)
+    if show_chart:
+        fig = plot_syllable_chart(syll_counts, src_syll)
+        st.plotly_chart(fig, use_container_width=True)
 
-            audio_file = generate_audio(translation, lang=languages[tgt_lang])
-            if audio_file:
-                st.audio(audio_file, format="audio/mp3")
+    # Pronunciation
+    st.subheader("Pronunciation Guide")
+    for l, t in translations.items():
+        lang_code = available_languages[l]
+        ipa = ipa_transcription(t)
+        simp = simple_phonetic(t)
+        st.markdown(f"**{l} Pronunciation:**")
+        st.markdown(ipa if not phonetic_toggle else simp)
+        audio_html = generate_tts_audio(t, lang_code)
+        st.markdown(audio_html, unsafe_allow_html=True)
 
-        # --- Output Sections ---
-        st.write(f"**{tgt_lang} Translation:** {translation}")
-        st.write(f"**Rhythmically Enhanced Translation:** {rhythmic_version}")
-
-        # --- Syllable Visualizer ---
-        if show_chart:
-            st.plotly_chart(plot_syllable_comparison(lyric_line, rhythmic_version))
-
-        # --- Syllable Breakdown ---
-        src_syllables = sum(count_syllables(w) for w in lyric_line.split())
-        tgt_syllables = sum(count_syllables(w) for w in rhythmic_version.split())
-        st.write(f"🎵 **Source Syllables:** {src_syllables}  |  **Target (Enhanced):** {tgt_syllables}")
-
-        dots_src = syllable_dots(src_syllables)
-        dots_tgt = syllable_dots(tgt_syllables)
-        st.write(f"🔵 Source Pattern: {dots_src}")
-        st.write(f"🟠 Target Pattern: {dots_tgt}")
-
-    st.caption("Stress/beat alignment support is prepared as a placeholder — will expand to real prosody modeling next.")
+    st.success("✅ Stress/beat alignment placeholder active — real prosody matching will follow next phase.")
 
 if __name__ == "__main__":
     main()
