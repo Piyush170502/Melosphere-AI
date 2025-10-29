@@ -1,6 +1,6 @@
 import math
 import random
-from .rhythm_utils import clean_text
+from rhythm_utils import clean_text
 
 def interleave_words(original, translations_by_lang):
     """Interleave words across provided translations. Preserves order within each language."""
