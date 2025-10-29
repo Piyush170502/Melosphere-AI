@@ -607,7 +607,7 @@ def main():
 
     # --- TABBED UI OUTPUTS ---
     tab_blend, tab_trans, tab_pron, tab_chart = st.tabs(
-        ["🎵 Blended Lyric", "📝 Translations & Rhythm", "🎙️ Pronunciation Guide", "📊 Syllable Charts"]
+        ["Blended Lyric", "Translations & Rhythm", "Pronunciation Guide", "Syllable Charts"]
     )
 
     # 1. BLENDED LYRIC TAB
