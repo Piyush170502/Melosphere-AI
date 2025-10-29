@@ -1,4 +1,5 @@
-# app.py — Enhanced (non-invasive) version for Streamlit Cloud
+# app.py — Full single-file app with UI enhancements (no logic/library changes)
+
 import streamlit as st
 import requests
 import pronouncing
@@ -17,118 +18,98 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import io
 
-# -------------------- UI STYLING --------------------
-st.markdown("""
-    <style>
-    /* Gradient animated background */
-    body {
-        background: linear-gradient(135deg, #e0f7fa, #f1f8e9, #fff3e0);
-        background-size: 400% 400%;
-        animation: gradientShift 20s ease infinite;
-    }
-
-    @keyframes gradientShift {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-
-    /* Header gradient animation */
-    .main-header {
-        text-align: center;
-        font-size: 2.4rem;
-        font-weight: 800;
-        background: linear-gradient(90deg, #ff6f61, #ffcc80, #64b5f6, #81c784);
-        background-clip: text;
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: hueRotate 10s linear infinite;
-        margin-bottom: 0.8rem;
-    }
-
-    @keyframes hueRotate {
-        0% { filter: hue-rotate(0deg); }
-        100% { filter: hue-rotate(360deg); }
-    }
-
-    /* Subheader */
-    .sub-header {
-        text-align: center;
-        font-size: 1.1rem;
-        color: #555;
-        margin-bottom: 2rem;
-    }
-
-    /* Stylish input area */
-    textarea {
-        border: 2px solid #ddd !important;
-        border-radius: 10px !important;
-        transition: all 0.3s ease-in-out !important;
-        box-shadow: none !important;
-    }
-
-    textarea:focus {
-        outline: none !important;
-        border-color: #64b5f6 !important;
-        box-shadow: 0 0 10px rgba(100, 181, 246, 0.6) !important;
-    }
-
-    /* Streamlit button styling */
-    div.stButton > button {
-        background: linear-gradient(90deg, #81c784, #64b5f6);
-        color: white;
-        border-radius: 12px;
-        font-weight: 600;
-        padding: 0.6rem 1.4rem;
-        border: none;
-        transition: all 0.3s ease;
-    }
-
-    div.stButton > button:hover {
-        transform: scale(1.05);
-        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.2);
-    }
-
-    /* Hide toggles section entirely */
-    div[data-testid="stCheckbox"] {
-        display: none;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# -------------------- HEADER --------------------
-st.markdown("""
-    <h1 class="main-header">🎛️ Melosphere — Polyglot Lyric Blending</h1>
-    <p class="sub-header">Rhythmic translation & polyglot blending — enhanced ✨</p>
-""", unsafe_allow_html=True)
-
-# Then continue with your existing app logic (text input, translation, charts, etc.)
-lyrics_input = st.text_area(
-    "🎤 Enter your lyrics:",
-    placeholder="e.g., You're my sunshine 🌞 or write your own creative lines...",
-    height=150
-)
-
 # ------------------------
-# Page / styling
+# Page & Animated CSS UI
 # ------------------------
 st.set_page_config(page_title="Melosphere — Polyglot Blending", layout="wide")
 
 st.markdown(
     """
     <style>
-      .big-title { font-size: 26px; font-weight:700; margin:0; }
-      .subtitle { color: #6b7280; margin:0; font-size:13px; }
-      .card { background: white; padding:12px; border-radius:10px; box-shadow: 0 6px 18px rgba(2,6,23,0.06); }
-      .lang-badge { display:inline-block; padding:6px 10px; border-radius:999px; color:white; font-weight:600; margin:2px; font-size:13px; }
-      .blended { font-size:18px; line-height:1.6; padding:12px; background: #f7f7fb; border-radius:8px; border:1px solid #eee;}
-      .small-muted { color: #6b7280; font-size:12px; }
+    /* Animated pale gradient background */
+    html, body, [class*="css"]  {
+        background: linear-gradient(120deg, #fbfbff 0%, #f4f7ff 25%, #fffaf6 50%, #f9fbff 75%, #ffffff 100%);
+        background-size: 300% 300%;
+        animation: gradientShift 18s ease infinite;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* Header gradient text */
+    .main-header {
+        text-align: center;
+        font-size: 30px;
+        font-weight: 800;
+        margin-bottom: 4px;
+        background: linear-gradient(90deg, #7c5cff, #ff7ab6, #ffb86b);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 12px;
+    }
+    .sub-header {
+        text-align: center;
+        color: #6b7280;
+        margin-top: -6px;
+        margin-bottom: 18px;
+        font-size: 14px;
+    }
+
+    /* Input area style and focused outline */
+    textarea {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0 !important;
+        padding: 12px !important;
+        transition: box-shadow 0.18s ease, border-color 0.18s ease;
+        font-size: 16px !important;
+        line-height: 1.5 !important;
+        background: rgba(255,255,255,0.95) !important;
+    }
+    textarea:focus {
+        border-color: rgba(124, 92, 255, 0.9) !important;
+        box-shadow: 0 6px 18px rgba(124, 92, 255, 0.12) !important;
+        outline: none !important;
+    }
+
+    /* Card style */
+    .card {
+        background: white;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 6px 24px rgba(16,24,40,0.06);
+        border: 1px solid rgba(16,24,40,0.03);
+    }
+
+    /* Buttons */
+    div.stButton > button {
+        background: linear-gradient(90deg, #7c5cff, #ff7ab6);
+        color: white;
+        border-radius: 10px;
+        border: none;
+        padding: 0.5rem 1rem;
+        font-weight: 700;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(124,92,255,0.16);
+    }
+
+    /* small muted text */
+    .muted { color:#6b7280; font-size:13px; }
+
+    /* reduce checkbox block spacing (we removed some toggles but keep others) */
+    .stCheckbox { margin-bottom: 6px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown('<div style="display:flex;justify-content:space-between;align-items:center"><div><div class="big-title">🎛️ Melosphere — Polyglot Lyric Blending</div><div class="subtitle">Rhythmic translation & polyglot blending — enhanced</div></div></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center;"><div class="main-header">🎛️ Melosphere — Polyglot Lyric Blending</div><div class="sub-header">Rhythmic translation & polyglot blending — enhanced</div></div>', unsafe_allow_html=True)
 
 # ------------------------
 # Logging (sidebar)
@@ -167,7 +148,7 @@ def translate_text(text, target_lang):
         return f"Error during translation: {e}"
 
 # ------------------------
-# Rhymes & Syllable helpers (kept behavior)
+# Rhymes & Syllable helpers
 # ------------------------
 def get_rhymes(word):
     try:
@@ -179,11 +160,9 @@ def get_rhymes(word):
     return []
 
 def clean_text(text):
-    """Centralized cleaning used throughout."""
     if text is None:
         return ""
     t = str(text)
-    # keep punctuation for final-punct detection, but normalize quotes
     t = t.replace("“", '"').replace("”", '"').replace("—", "-").replace("–", "-")
     t = t.strip()
     return t
@@ -194,7 +173,6 @@ def count_syllables_english(word):
         try:
             return pronouncing.syllable_count(phones[0])
         except Exception:
-            # fallback to heuristic
             return sum(1 for ch in word.lower() if ch in 'aeiou')
     return sum(1 for ch in word.lower() if ch in 'aeiou')
 
@@ -237,7 +215,6 @@ def _build_fillers(diff, max_fillers=3, seed_text=None):
     k = min(max_fillers, max(0, diff))
     if k == 0:
         return ""
-    # deterministic sample based on SHA256 of seed_text (stable across reruns)
     seed = 0
     if seed_text is not None:
         seed = int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16)
@@ -264,7 +241,7 @@ def insert_fillers_safely(translated_text, fillers_str):
         return f"{t}, {fillers_str}"
 
 # ------------------------
-# Rhythmic Translation Enhancement (kept same interface)
+# Rhythmic Translation Enhancement
 # ------------------------
 def rhythmic_translation_enhancement(original, translated, max_fillers=3):
     orig_syll = count_syllables_general(original, "en")
@@ -281,7 +258,7 @@ def rhythmic_translation_enhancement(original, translated, max_fillers=3):
     return enhanced, orig_syll, trans_syll_before, trans_syll_after, diff
 
 # ------------------------
-# Blending Strategies (preserve original logic but avoid trivial repeats)
+# Blending Strategies
 # ------------------------
 def interleave_words(original, translations_by_lang):
     tokenized = [t.split() for t in translations_by_lang]
@@ -291,7 +268,6 @@ def interleave_words(original, translations_by_lang):
         for tok_list in tokenized:
             if i < len(tok_list):
                 tok = tok_list[i]
-                # avoid immediate duplicate tokens
                 if blended_tokens and tok.lower() == blended_tokens[-1].lower():
                     continue
                 blended_tokens.append(tok)
@@ -309,7 +285,6 @@ def phrase_swap(original, translations_by_lang):
         a, b = segments
         a_seg = a[:math.ceil(len(a) / 2)]
         b_seg = b[math.floor(len(b) / 2):]
-        # remove consecutive duplicates
         assembled = a_seg + b_seg
         out = []
         for w in assembled:
@@ -325,7 +300,6 @@ def phrase_swap(original, translations_by_lang):
             assembled.extend(words[start:end])
         else:
             assembled.extend(words[: max(1, min(3, n))])
-    # dedupe adjacent
     out = []
     for w in assembled:
         if not out or w.lower() != out[-1].lower():
@@ -376,7 +350,7 @@ def plot_syllable_comparison(orig_syll, trans_before, trans_after, lang_name):
     return fig
 
 # ------------------------
-# Pronunciation helpers (restore original detailed logic)
+# Pronunciation helpers
 # ------------------------
 @st.cache_data(show_spinner=False)
 def generate_tts_audio(text, lang_code):
@@ -414,21 +388,15 @@ def get_pronunciation(text, lang_code, simplified=False):
             ipa_text = None
         if simplified:
             try:
-                # transliterate to IAST (romanized) for easier reading
                 return transliterate(text, script, 'iast')
             except Exception:
-                # fallback to text if transliteration fails
                 return text
-        # Prefer ipa_text if produced, otherwise romanized IAST as fallback
         return ipa_text if ipa_text else transliterate(text, script, 'iast')
 
-    # Non-indic fallback: approximate IPA by replacements
     ipa = text
-    # Preserve original characters and make substitutions for a readable IPA-like approximation
     ipa = ipa.replace("th", "θ").replace("sh", "ʃ").replace("ch", "tʃ").replace("ph", "f")
     ipa = ipa.replace("a", "ɑ").replace("e", "ɛ").replace("i", "i").replace("o", "ɔ").replace("u", "u")
     if simplified:
-        # simplified fallback: strip non-alphanum for readability
         return re.sub(r"[^a-zA-Z0-9\s]", "", text)
     return ipa
 
@@ -436,11 +404,12 @@ def get_pronunciation(text, lang_code, simplified=False):
 # Main App UI
 # ------------------------
 def main():
-    st.title("🎛️ Melosphere — Polyglot Lyric Blending")
+    st.title("")  # no duplicate title printed here (we use header above)
 
     col1, col2 = st.columns([2, 1])
     with col1:
-        lyric_line = st.text_area("Enter your lyric line (English):", height=80)
+        # Placeholder guidance added
+        lyric_line = st.text_area("Enter your lyric line (English):", height=100, placeholder="e.g., You're my sunshine 🌞")
     with col2:
         available_languages = {
             "Spanish": "es", "Kannada": "kn", "Tamil": "ta", "Malayalam": "ml", "Hindi": "hi",
@@ -450,11 +419,9 @@ def main():
         selected = st.multiselect("Select 2+ target languages:", list(available_languages.keys()), default=["Spanish", "Hindi"])
         mode = st.selectbox("Blending mode:", ["Interleave Words", "Phrase Swap", "Last-Word Swap"])
         enhance_rhythm = st.checkbox("✨ Rhythmic Enhancement", value=True)
-        fillers_in_blend_only = st.checkbox("Show fillers only in blended output", value=True)
+        # removed toggles: fillers_in_blend_only, show_dots, show_rhymes
         show_plot = st.checkbox("Show syllable comparison chart", value=False)
-        show_dots = st.checkbox("Show syllable dots visual", value=False)
         show_syllables = st.checkbox("Show syllable hints / rhythm warnings", value=True)
-        show_rhymes = st.checkbox("Show English rhymes for the last word", value=True)
 
     if not lyric_line or not selected:
         st.info("Enter a lyric and select at least one target language.")
@@ -469,7 +436,7 @@ def main():
     tgt_codes = [available_languages[l] for l in selected]
     translations_clean, translations_enhanced, overall_stats = {}, {}, {}
 
-    # Concurrentize translations
+    # Concurrent translations
     def translate_and_enhance(lang_name, code):
         trans = translate_text(lyric_line_clean, code)
         if enhance_rhythm:
@@ -482,7 +449,6 @@ def main():
             diff = orig_syll - trans_before
         return (lang_name, code, trans, enhanced, orig_syll, trans_before, trans_after, diff)
 
-    # Use ThreadPoolExecutor to speed up translate calls
     with ThreadPoolExecutor(max_workers=min(8, len(tgt_codes))) as executor:
         futures = [executor.submit(translate_and_enhance, lang_name, code) for lang_name, code in zip(selected, tgt_codes)]
         for fut in as_completed(futures):
@@ -528,13 +494,12 @@ def main():
 
     # Charts
     if show_plot:
-        # ensure charts reflect latest overall_stats
         for lang_name in selected:
             stats = overall_stats[lang_name]
             fig = plot_syllable_comparison(stats["orig_syll"], stats["trans_before"], stats["trans_after"], lang_name)
             st.plotly_chart(fig, use_container_width=True)
 
-    # Pronunciation Guide (restore original behavior)
+    # Pronunciation Guide
     st.subheader("🎙️ Pronunciation Guide")
     show_simple = st.checkbox("See simplified style (default = IPA)", value=False, key="pron_simple")
     for lang_name in selected:
@@ -542,14 +507,13 @@ def main():
         text = translations_clean[lang_name]
         pron = get_pronunciation(text, code, simplified=show_simple)
         st.markdown(f"**{lang_name} pronunciation:**")
-        # Ensure IPA/simplified shows as plain text (not mis-escaped)
         if isinstance(pron, str):
             st.markdown(pron)
         else:
             st.write(pron)
         st.markdown(generate_tts_audio(text, code), unsafe_allow_html=True)
 
-    # Side logs
+    # Sidebar logs
     with st.sidebar:
         st.subheader("Logs")
         st.text_area("Runtime logs:", value=st.session_state.get("melosphere_logs", ""), height=300)
