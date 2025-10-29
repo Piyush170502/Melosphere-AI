@@ -24,12 +24,13 @@ st.set_page_config(page_title="Melosphere — Polyglot Blending", layout="wide")
 st.markdown(
     """
     <style>
-    /* Animated pale gradient background */
+    /* Animated pale gradient background for the page body */
     html, body, [class*="css"] {
         background: linear-gradient(120deg, #fbfbff 0%, #f4f7ff 25%, #fffaf6 50%, #f9fbff 75%, #ffffff 100%);
         background-size: 300% 300%;
         animation: gradientShift 18s ease infinite;
         font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        color: #f1f1f1; /* Ensure default text is light for dark mode content */
     }
     @keyframes gradientShift {
         0% { background-position: 0% 50%; }
@@ -92,9 +93,9 @@ st.markdown(
         animation: textPulse 1.4s ease-in-out infinite;
     }
 
-    /* --- TAB STYLES (MODIFIED) --- */
+    /* --- TAB STYLES (Black Background & Gradient Tab Name/Border) --- */
+    /* Tab Buttons - inactive */
     div[data-testid="stTab"] button {
-        /* 1. Black background for the tab buttons */
         background-color: black !important;
         color: #a0a0a0; /* Default color for inactive text */
         border-radius: 8px 8px 0 0 !important;
@@ -102,48 +103,47 @@ st.markdown(
         padding: 10px 15px !important;
         transition: all 0.2s ease;
         font-weight: 500;
+        border-bottom: 4px solid #444 !important; /* Inactive tab border */
     }
 
-    /* Target the container of the tab labels to set background to black */
+    /* Tabs Container (The horizontal bar holding the tabs) */
     div[data-testid="stTabs"] {
         background-color: black;
-        padding: 0 10px 0 10px; /* Optional: adds a bit of padding around the tabs */
+        padding: 0 10px 0 10px; 
         border-radius: 10px 10px 0 0;
     }
     
     /* Active Tab: Gradient Text and Gradient Border */
     div[data-testid="stTab"] button[aria-selected="true"] {
-        /* 2. Gradient text for the active tab */
+        /* Gradient text for the active tab */
         background: linear-gradient(90deg, #7c5cff, #ff7ab6) !important;
         -webkit-background-clip: text !important;
         -webkit-text-fill-color: transparent !important;
         
-        /* Ensure background stays black and is on top */
-        background-color: black !important; 
+        background-color: black !important; /* Ensure background stays black */
         font-weight: 700;
 
-        /* 3. Gradient Border (using border-image for a bottom underline effect) */
+        /* Gradient Border (using border-image for a bottom underline effect) */
         border-bottom: 4px solid;
         border-image: linear-gradient(to right, #7c5cff, #ff7ab6) 1;
         border-image-slice: 1;
         border-radius: 0 !important; 
     }
 
-    /* Inactive Tab Border: Dark Solid Line */
-    div[data-testid="stTab"] button:not([aria-selected="true"]) {
-        border-bottom: 4px solid #444 !important;
+    /* Content area *inside* the tabs - ***NEW FIX HERE*** */
+    /* This targets the content container of the tab */
+    .st-emotion-cache-1cpxdwv { 
+        background: black !important; /* Set the entire tab content area to black */
+        padding: 20px; /* Add some padding back for content readability */
+        border-radius: 0 0 10px 10px;
     }
-    /* The space under the tabs needs a dark background to blend */
+    /* Set the vertical block wrapper inside the tab content back to transparent/black */
     div[data-testid="stHorizontalBlock"] > div[data-testid="stVerticalBlock"] {
         background-color: black; 
     }
-    /* Set the content area after the tabs back to white/transparent to match the body */
-    .st-emotion-cache-1cpxdwv { /* This targets the content area below the tab bar */
-        background: transparent !important;
-    }
-    /* ------------------------------------ */
-
-
+    
+    /* --- OTHER STYLES (KEPT INTACT) --- */
+    
     /* Gradient text for output headers */
     .output-header {
         font-size: 20px;
@@ -158,16 +158,18 @@ st.markdown(
 
     /* Gradient Bordered Card Style for main output (Blended Lyric) */
     div[data-testid="stVerticalBlock"] > div:has(div.stAlert) {
+        /* This is the outer gradient border */
         background: #ffffff;
         border-radius: 16px;
-        padding: 1px;
+        padding: 1px; 
         box-shadow: 0 10px 30px rgba(124, 92, 255, 0.1);
         background-image: linear-gradient(90deg, #7c5cff, #ff7ab6);
     }
 
     /* Inner box for the gradient border effect */
     div[data-testid="stVerticalBlock"] > div:has(div.stAlert) > div > div > div.stAlert {
-        background: white !important;
+        background: black !important; /* Changed from white to black for contrast with text */
+        color: #f1f1f1 !important; /* Ensure text is light */
         border: none !important;
         border-radius: 15px !important;
         padding: 15px !important;
@@ -175,17 +177,27 @@ st.markdown(
 
     /* Style for the Blended Lyric Preview text inside st.info */
     div[data-testid="stVerticalBlock"] > div:has(div.stAlert) .stAlert strong {
-        color: #7c5cff; 
+        color: #ff7ab6; /* Changed label color to pink gradient for visibility on black */
     }
-
+    
+    /* Audio Player Styling */
+    .stAudio {
+        background-color: #1a1a1a !important;
+        border-radius: 12px;
+        padding: 10px;
+    }
+    
     /* Style for the Translation output columns (simple white card with soft shadow) */
     .st-emotion-cache-1r6ipbh { 
-        background: white;
+        background: #1a1a1a; /* Darker than black background for contrast */
+        color: #f1f1f1;
         border-radius: 12px;
         padding: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        border: 1px solid #f0f0f5;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        border: 1px solid #333;
     }
+    .st-emotion-cache-1r6ipbh p { color: #f1f1f1; } /* Ensure text in columns is white */
+
 
     /* Buttons */
     div.stButton > button {
@@ -586,12 +598,14 @@ def main():
     # 1. BLENDED LYRIC TAB
     with tab_blend:
         st.markdown('<span class="output-header">Final Blended Lyric</span>', unsafe_allow_html=True)
+        # st.info is wrapped in the gradient border (via CSS)
         st.info(f"**Blended lyric preview ({mode}):**\n{blended}")
 
         # Audio for the blended line
         st.markdown(f"**Listen to the Blended Line (First selected language: {selected[0]})**")
         first_lang_code = available_languages[selected[0]]
-        st.markdown(generate_tts_audio(blended, first_lang_code), unsafe_allow_html=True)
+        # Wrapped audio in a div with styling for dark mode appearance
+        st.markdown(f'<div class="stAudio">{generate_tts_audio(blended, first_lang_code)}</div>', unsafe_allow_html=True)
 
 
     # 2. TRANSLATIONS & RHYTHM TAB
@@ -635,7 +649,7 @@ def main():
 
             # Audio Player
             st.markdown(f"**Audio Playback:**")
-            st.markdown(generate_tts_audio(text, code), unsafe_allow_html=True)
+            st.markdown(f'<div class="stAudio">{generate_tts_audio(text, code)}</div>', unsafe_allow_html=True)
 
     # 4. SYLLABLE CHARTS TAB
     with tab_chart:
