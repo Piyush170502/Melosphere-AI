@@ -1,4 +1,4 @@
-# app.py (updated)
+# app.py — Enhanced (non-invasive) version for Streamlit Cloud
 import streamlit as st
 import requests
 import pronouncing
@@ -9,182 +9,151 @@ import plotly.graph_objects as go
 from gtts import gTTS
 import tempfile
 import base64
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from google.cloud import translate_v2 as translate
 from google.oauth2 import service_account
 import epitran
 from indic_transliteration.sanscript import transliterate
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import hashlib
+import io
 
-# -------------------------
-# Page styling (fonts, colors)
-# -------------------------
-st.set_page_config(page_title="Melosphere — Polyglot Lyric Blending", layout="wide")
+# ------------------------
+# Page / styling
+# ------------------------
+st.set_page_config(page_title="Melosphere — Polyglot Blending", layout="wide")
 
-# Inject Google Fonts and custom CSS for a stylish look
 st.markdown(
     """
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
     <style>
-      :root{
-        --accent:#7c5cff;
-        --accent-2:#ff7ab6;
-        --muted:#6b7280;
-        --card:#ffffff;
-        --bg:#0f172a;
-      }
-      html, body, [class*="css"]  {
-        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      }
-      .header {
-        background: linear-gradient(90deg, rgba(124,92,255,1) 0%, rgba(255,122,182,1) 100%);
-        padding: 18px;
-        border-radius: 12px;
-        color: white;
-        box-shadow: rgba(2,6,23,0.6) 0px 6px 24px;
-      }
-      .big-title{
-        font-family: 'Playfair Display', serif;
-        font-size: 28px;
-        margin: 0;
-      }
-      .sub-title{ color: rgba(255,255,255,0.9); margin:0; font-size:13px}
-      .lang-badge { display:inline-block; padding:6px 10px; border-radius:999px; color:white; font-weight:600; margin:2px; font-size:13px; }
+      .big-title { font-size: 26px; font-weight:700; margin:0; }
+      .subtitle { color: #6b7280; margin:0; font-size:13px; }
       .card { background: white; padding:12px; border-radius:10px; box-shadow: 0 6px 18px rgba(2,6,23,0.06); }
+      .lang-badge { display:inline-block; padding:6px 10px; border-radius:999px; color:white; font-weight:600; margin:2px; font-size:13px; }
       .blended { font-size:18px; line-height:1.6; padding:12px; background: #f7f7fb; border-radius:8px; border:1px solid #eee;}
       .small-muted { color: #6b7280; font-size:12px; }
-      .lang-token { padding:2px 6px; border-radius:6px; color:white; margin:2px; display:inline-block; font-weight:600; }
-      .syl-dot{ display:inline-block; margin-right:6px; color:#111827; font-size:14px;}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    '<div class="header"><h1 class="big-title">🎛️ Melosphere — Polyglot Lyric Blending</h1><div class="sub-title">Rhythmic translations, polyglot blends & stylized previews</div></div>',
-    unsafe_allow_html=True,
-)
+st.markdown('<div style="display:flex;justify-content:space-between;align-items:center"><div><div class="big-title">🎛️ Melosphere — Polyglot Lyric Blending</div><div class="subtitle">Rhythmic translation & polyglot blending — enhanced</div></div></div>', unsafe_allow_html=True)
 
-# -------------------------
-# Utilities & configuration
-# -------------------------
-LANG_COLORS = {
-    "Spanish": "#e74c3c",
-    "Hindi": "#f39c12",
-    "Kannada": "#9b59b6",
-    "Tamil": "#16a085",
-    "Malayalam": "#2ecc71",
-    "Telugu": "#3498db",
-    "Japanese": "#f1c40f",
-    "French": "#9b9bff",
-    "Portuguese": "#ff7ab6",
-    "German": "#7f8c8d",
-    "Korean": "#34495e",
-}
+# ------------------------
+# Logging (sidebar)
+# ------------------------
+if "melosphere_logs" not in st.session_state:
+    st.session_state["melosphere_logs"] = ""
 
-AVAILABLE_LANGUAGES = {
-    "Spanish": "es", "Kannada": "kn", "Tamil": "ta", "Malayalam": "ml", "Hindi": "hi",
-    "Telugu": "te", "Japanese": "ja", "French": "fr", "Portuguese": "pt",
-    "German": "de", "Korean": "ko"
-}
+def log(msg: str):
+    st.session_state["melosphere_logs"] += msg + "\n"
 
-FILLERS_DEFAULT = ["oh", "la", "yeah", "na", "hey", "mmm"]
-
-# -------------------------
-# Logging UI
-# -------------------------
-if "logs" not in st.session_state:
-    st.session_state["logs"] = ""
-
-def append_log(s: str):
-    st.session_state["logs"] += s + "\n"
-
-# -------------------------
-# Google Translate client
-# -------------------------
+# ------------------------
+# Google Cloud Translate Setup
+# ------------------------
 @st.cache_resource
 def get_translate_client():
     try:
         credentials_info = st.secrets["gcp_service_account"]
         credentials = service_account.Credentials.from_service_account_info(credentials_info)
         client = translate.Client(credentials=credentials)
-        append_log("Google Translate client initialized.")
+        log("✅ Translate client initialized")
         return client
     except Exception as e:
-        append_log(f"Translate init failed: {e}")
+        log(f"❌ Translate init error: {e}")
         return None
 
 translate_client = get_translate_client()
 
 def translate_text(text, target_lang):
     if not translate_client:
-        return "⚠️ Translation client not initialized."
+        return "⚠️ Translation client not initialized. Check your credentials in Streamlit secrets."
     try:
         result = translate_client.translate(text, target_language=target_lang)
         return result.get("translatedText", "")
     except Exception as e:
-        append_log(f"Translation error for {target_lang}: {e}")
-        return f"Error: {e}"
+        log(f"⚠️ Translation error for {target_lang}: {e}")
+        return f"Error during translation: {e}"
 
-# -------------------------
-# Text cleaning & syllable counter (merged)
-# -------------------------
-VOWELS = "aeiouáàâäãåāéèêëēíìîïīóòôöõōúùûüūy"
+# ------------------------
+# Rhymes & Syllable helpers (kept behavior)
+# ------------------------
+def get_rhymes(word):
+    try:
+        response = requests.get(f'https://api.datamuse.com/words?rel_rhy={word}&max=10', timeout=6)
+        if response.status_code == 200:
+            return [item['word'] for item in response.json()]
+    except Exception:
+        pass
+    return []
 
-def clean_text(text: str) -> str:
-    if not text:
+def clean_text(text):
+    """Centralized cleaning used throughout."""
+    if text is None:
         return ""
     t = str(text)
-    # Normalize punctuation but keep sentence-final punctuation
-    t = t.replace("—", "-").replace("–", "-")
-    t = re.sub(r"[\"“”‘’]+", "", t)
+    # keep punctuation for final-punct detection, but normalize quotes
+    t = t.replace("“", '"').replace("”", '"').replace("—", "-").replace("–", "-")
     t = t.strip()
     return t
 
-def syllables_heuristic_word(word: str) -> int:
-    lw = re.sub(r"[^a-záàâäãåāéèêëēíìîïīóòôöõōúùûüūy]", "", word.lower())
-    if not lw:
-        return 0
-    groups = 0
-    prev_v = False
-    for ch in lw:
-        is_v = ch in VOWELS
-        if is_v and not prev_v:
-            groups += 1
-        prev_v = is_v
-    return groups if groups > 0 else 1
+def count_syllables_english(word):
+    phones = pronouncing.phones_for_word(word)
+    if phones:
+        try:
+            return pronouncing.syllable_count(phones[0])
+        except Exception:
+            # fallback to heuristic
+            return sum(1 for ch in word.lower() if ch in 'aeiou')
+    return sum(1 for ch in word.lower() if ch in 'aeiou')
 
-def count_syllables_general(text, lang_code="en"):
-    text = clean_text(text)
-    if not text:
+def count_syllables_heuristic(text):
+    text = str(text)
+    for ch in ",.!?;:-—()\"'":
+        text = text.replace(ch, " ")
+    words = [w for w in text.split() if w.strip()]
+    syllables = 0
+    for w in words:
+        lw = w.lower()
+        groups = 0
+        prev_vowel = False
+        for ch in lw:
+            is_v = ch in "aeiouáàâäãåāéèêëēíìîïīóòôöõōúùûüūy"
+            if is_v and not prev_vowel:
+                groups += 1
+            prev_vowel = is_v
+        if groups == 0:
+            groups = 1
+        syllables += groups
+    return syllables
+
+def count_syllables_general(text, lang_code):
+    if not text or not isinstance(text, str):
         return 0
-    words = [w for w in re.split(r"\s+", text) if w.strip()]
     if lang_code.startswith("en"):
-        total = 0
-        for w in words:
-            phones = pronouncing.phones_for_word(w.lower())
-            if phones:
-                try:
-                    total += pronouncing.syllable_count(phones[0])
-                except Exception:
-                    total += syllables_heuristic_word(w)
-            else:
-                total += syllables_heuristic_word(w)
-        return total
+        words = [w for w in text.split() if w.strip()]
+        return sum(count_syllables_english(w) for w in words)
     else:
-        return sum(syllables_heuristic_word(w) for w in words)
+        return count_syllables_heuristic(text)
 
-# -------------------------
-# Deterministic fillers
-# -------------------------
-def deterministic_fillers(diff, seed, max_fillers=3):
+# ------------------------
+# Smart filler insertion (deterministic)
+# ------------------------
+_FILLERS = ["oh", "la", "yeah", "na", "hey", "mmm"]
+
+def _build_fillers(diff, max_fillers=3, seed_text=None):
+    fillers = _FILLERS
     k = min(max_fillers, max(0, diff))
     if k == 0:
         return ""
-    rng = random.Random(abs(hash(seed)) % (10**9))
-    if k <= len(FILLERS_DEFAULT):
-        chosen = rng.sample(FILLERS_DEFAULT, k)
+    # deterministic sample based on SHA256 of seed_text (stable across reruns)
+    seed = 0
+    if seed_text is not None:
+        seed = int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16)
+    rnd = random.Random(seed)
+    if k <= len(fillers):
+        chosen = rnd.sample(fillers, k)
     else:
-        chosen = [rng.choice(FILLERS_DEFAULT) for _ in range(k)]
+        chosen = [rnd.choice(fillers) for _ in range(k)]
     return " ".join(chosen)
 
 def insert_fillers_safely(translated_text, fillers_str):
@@ -202,80 +171,68 @@ def insert_fillers_safely(translated_text, fillers_str):
             return f"{t}, {fillers_str}"
         return f"{t}, {fillers_str}"
 
+# ------------------------
+# Rhythmic Translation Enhancement (kept same interface)
+# ------------------------
 def rhythmic_translation_enhancement(original, translated, max_fillers=3):
     orig_syll = count_syllables_general(original, "en")
-    trans_before = count_syllables_general(translated, "xx")
-    diff = orig_syll - trans_before
+    trans_syll_before = count_syllables_heuristic(translated)
+    diff = orig_syll - trans_syll_before
     if diff <= 0:
         enhanced = translated.strip()
+        trans_syll_after = trans_syll_before
     else:
-        fillers = deterministic_fillers(diff, original + translated, max_fillers=max_fillers)
-        enhanced = insert_fillers_safely(translated, fillers)
-    trans_after = count_syllables_general(enhanced, "xx")
-    return enhanced, orig_syll, trans_before, trans_after, diff
+        fillers_str = _build_fillers(diff, max_fillers=max_fillers, seed_text=translated + original if translated else original)
+        enhanced = insert_fillers_safely(translated, fillers_str)
+        trans_syll_after = count_syllables_heuristic(enhanced)
+    enhanced = re.sub(r"\s+", " ", enhanced).strip()
+    return enhanced, orig_syll, trans_syll_before, trans_syll_after, diff
 
-# -------------------------
-# Improved blending functions
-# -------------------------
-def interleave_words_safe(translations_list):
-    """
-    Interleave tokens from translations_list but avoid repeating same token consecutively.
-    Also shorten extremely long lists by limiting max tokens.
-    """
-    tokenized = [t.split() for t in translations_list]
-    max_len = max((len(t) for t in tokenized), default=0)
-    blended = []
+# ------------------------
+# Blending Strategies (preserve original logic but avoid trivial repeats)
+# ------------------------
+def interleave_words(original, translations_by_lang):
+    tokenized = [t.split() for t in translations_by_lang]
+    max_len = max(len(t) for t in tokenized) if tokenized else 0
+    blended_tokens = []
     for i in range(max_len):
         for tok_list in tokenized:
             if i < len(tok_list):
                 tok = tok_list[i]
-                if not tok:
+                # avoid immediate duplicate tokens
+                if blended_tokens and tok.lower() == blended_tokens[-1].lower():
                     continue
-                # avoid consecutive duplicates
-                if blended and tok.lower() == blended[-1].lower():
-                    continue
-                blended.append(tok)
-                # safety cap
-                if len(blended) > 120:
-                    break
-        if len(blended) > 120:
-            break
-    return " ".join(blended)
+                blended_tokens.append(tok)
+    return " ".join(blended_tokens)
 
-def phrase_swap_improved(translations_list):
-    """
-    Take controlled segments from each translation, avoid repeating identical sequences,
-    and prefer central slices instead of naïve halves.
-    """
-    segments = [t.split() for t in translations_list]
-    if not segments:
-        return ""
+def phrase_swap(original, translations_by_lang):
+    segments = []
+    for t in translations_by_lang:
+        words = t.split()
+        seg_size = max(1, math.ceil(len(words) / 2))
+        segments.append(words)
     if len(segments) == 1:
-        return translations_list[0]
-    # For two segments: take first 40% of A + last 50% of B (avoids repeats)
+        return translations_by_lang[0]
     if len(segments) == 2:
         a, b = segments
-        a_len, b_len = len(a), len(b)
-        a_take = max(1, math.floor(a_len * 0.4))
-        b_take = max(1, math.ceil(b_len * 0.5))
-        result = a[:a_take] + b[-b_take:]
-        # remove immediate duplicates
+        a_seg = a[:math.ceil(len(a) / 2)]
+        b_seg = b[math.floor(len(b) / 2):]
+        # remove consecutive duplicates
+        assembled = a_seg + b_seg
         out = []
-        for w in result:
+        for w in assembled:
             if not out or w.lower() != out[-1].lower():
                 out.append(w)
         return " ".join(out)
-    # For many segments, extract a middle slice proportional to segment index
     assembled = []
     for idx, words in enumerate(segments):
         n = len(words)
-        if n == 0:
-            continue
-        mid = n // 2
-        span = max(1, min(3, n // (len(segments) + 1)))
-        start = max(0, mid - span)
-        end = min(n, mid + span)
-        assembled.extend(words[start:end])
+        start = math.floor(idx * n / len(segments))
+        end = math.floor((idx + 1) * n / len(segments))
+        if start < end:
+            assembled.extend(words[start:end])
+        else:
+            assembled.extend(words[: max(1, min(3, n))])
     # dedupe adjacent
     out = []
     for w in assembled:
@@ -283,91 +240,54 @@ def phrase_swap_improved(translations_list):
             out.append(w)
     return " ".join(out)
 
-def last_word_swap_safe(original, translations_list):
+def last_word_swap(original, translations_by_lang):
     orig_words = original.strip().split()
     if not orig_words:
         return original
-    for t in translations_list:
-        tw = [w for w in t.split() if w.strip()]
+    for t in translations_by_lang:
+        tw = t.strip().split()
         if tw:
-            # ensure the last word is not identical to the original last word
-            if tw[-1].lower() == orig_words[-1].lower() and len(tw) > 1:
-                last = tw[-2]
-            else:
-                last = tw[-1]
-            return " ".join(orig_words[:-1] + [last])
+            new_last = tw[-1]
+            if new_last.lower() == orig_words[-1].lower() and len(tw) > 1:
+                new_last = tw[-2]
+            return " ".join(orig_words[:-1] + [new_last])
     return original
 
+# ------------------------
+# Utility
+# ------------------------
 def remove_consecutive_duplicates(text):
     words = text.split()
     if not words:
         return ""
     out = [words[0]]
     for w in words[1:]:
-        if w.lower() != out[-1].lower():
+        if w != out[-1]:
             out.append(w)
     return " ".join(out)
 
-# -------------------------
-# Pronunciation improvements
-# -------------------------
-EPITRAN_MAP = {
-    "hi": "hin-Deva", "ta": "tam-Taml", "te": "tel-Telu", "kn": "kan-Knda",
-    "ml": "mal-Mlym", "bn": "ben-Beng", "gu": "guj-Gujr", "pa": "pan-Guru",
-    "es": "spa-Latn", "fr": "fra-Latn", "pt": "por-Latn", "de": "deu-Latn",
-    "ja": "jpn-Jpan", "ko": "kor-Kore"
-}
+def syllable_dots(count, cap=40):
+    dots = "● " * min(count, cap)
+    if count > cap:
+        dots += f"...(+{count-cap})"
+    return dots.strip()
 
-def get_pronunciation(text, lang_code, simplified=False):
-    """
-    Try epitran transliteration first for supported languages.
-    For Japanese/others where epitran may behave poorly, fallback to a simple transliteration heuristic.
-    """
-    if not text:
-        return ""
-    code = lang_code.lower()
-    epi_code = EPITRAN_MAP.get(code)
-    if epi_code:
-        try:
-            epi = epitran.Epitran(epi_code)
-            ipa = epi.transliterate(text)
-            if ipa and len(ipa.strip()) > 0:
-                if simplified:
-                    # simple romanization fallback: return ascii-only subset
-                    return re.sub(r"[^a-zA-Z0-9\s]", "", ipa)
-                return ipa
-        except Exception:
-            # epitran can throw for some langs; we'll fallback
-            pass
-    # fallback heuristics:
-    # - For Japanese: try to convert katakana/hiragana to romaji via basic unicode ranges (rough)
-    if code == "ja":
-        # basic conversion: map hiragana/katakana to romaji for common characters (very small heuristic)
-        # NOTE: full proper conversion requires pykakasi or similar; this is a best-effort fallback.
-        try:
-            # quick naive replacement for long vowels and simple kana (very small subset)
-            s = text
-            s = re.sub('[ぁあ]', 'a', s)
-            s = re.sub('[ぃい]', 'i', s)
-            s = re.sub('[ぅう]', 'u', s)
-            s = re.sub('[ぇえ]', 'e', s)
-            s = re.sub('[ぉお]', 'o', s)
-            # remove non-ascii
-            s = re.sub(r'[^\x00-\x7F]+', '', s)
-            if s.strip():
-                return s
-        except Exception:
-            pass
-    # generic fallback: strip diacritics-ish and show original with minimal cleanup
-    if simplified:
-        return re.sub(r"[^a-zA-Z0-9\s]", "", text)
-    return text
+def plot_syllable_comparison(orig_syll, trans_before, trans_after, lang_name):
+    categories = ["Original", f"{lang_name} (clean)", f"{lang_name} (enhanced)"]
+    values = [orig_syll, trans_before, trans_after]
+    colors = []
+    for v in values:
+        diff = abs(v - orig_syll)
+        colors.append("#2ecc71" if diff == 0 else "#f1c40f" if diff <= 2 else "#e74c3c")
+    fig = go.Figure([go.Bar(x=categories, y=values, marker_color=colors, text=values, textposition="auto")])
+    fig.update_layout(title=f"Syllable Count Comparison — {lang_name}", yaxis_title="Syllable count", height=360)
+    return fig
 
-# -------------------------
-# Cached TTS
-# -------------------------
+# ------------------------
+# Pronunciation helpers (restore original detailed logic)
+# ------------------------
 @st.cache_data(show_spinner=False)
-def generate_tts_audio_cached(text, lang_code):
+def generate_tts_audio(text, lang_code):
     try:
         tts = gTTS(text=text, lang=lang_code)
         temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
@@ -377,163 +297,170 @@ def generate_tts_audio_cached(text, lang_code):
         b64 = base64.b64encode(audio_bytes).decode()
         return f'<audio controls src="data:audio/mp3;base64,{b64}"></audio>'
     except Exception as e:
-        append_log(f"TTS generation failed for {lang_code}: {e}")
+        log(f"TTS generation failed for {lang_code}: {e}")
         return f"<i>Audio unavailable: {e}</i>"
 
-# -------------------------
-# Translation orchestration (concurrent)
-# -------------------------
-def translate_all(lyric, selected_langs, enhance_rhythm=True, max_fillers=3):
-    """
-    selected_langs: dict of {lang_name: lang_code}
-    returns: translations dict and stats dict
-    """
-    translations = {}
-    stats = {}
-    # Use ThreadPoolExecutor for I/O-bound translate requests
-    with ThreadPoolExecutor(max_workers=min(8, len(selected_langs) or 1)) as executor:
-        future_map = {}
-        for lang_name, code in selected_langs.items():
-            future = executor.submit(translate_text, lyric, code)
-            future_map[future] = (lang_name, code)
-        for fut in as_completed(future_map):
-            lang_name, code = future_map[fut]
+def get_pronunciation(text, lang_code, simplified=False):
+    lang_code = lang_code.lower()
+    indic_langs = {
+        'hi': ('hin-Deva', 'devanagari'),
+        'ta': ('tam-Taml', 'tamil'),
+        'te': ('tel-Telu', 'telugu'),
+        'kn': ('kan-Knda', 'kannada'),
+        'ml': ('mal-Mlym', 'malayalam'),
+        'bn': ('ben-Beng', 'bengali'),
+        'gu': ('guj-Gujr', 'gujarati'),
+        'pa': ('pan-Guru', 'gurmukhi')
+    }
+
+    if lang_code in indic_langs:
+        epi_code, script = indic_langs[lang_code]
+        try:
+            epi = epitran.Epitran(epi_code)
+            ipa_text = epi.transliterate(text)
+        except Exception:
+            ipa_text = None
+        if simplified:
             try:
-                txt = fut.result()
-            except Exception as e:
-                txt = f"Error: {e}"
-                append_log(f"Translation task failed for {lang_name}: {e}")
-            if enhance_rhythm:
-                enhanced, orig_syll, before, after, diff = rhythmic_translation_enhancement(lyric, txt, max_fillers=max_fillers)
-            else:
-                enhanced = txt
-                orig_syll = count_syllables_general(lyric, "en")
-                before = count_syllables_general(txt, code)
-                after = before
-                diff = orig_syll - before
-            translations[lang_name] = {"clean": txt, "enhanced": enhanced, "code": code}
-            stats[lang_name] = {"orig": orig_syll, "before": before, "after": after, "diff": diff}
-    return translations, stats
+                # transliterate to IAST (romanized) for easier reading
+                return transliterate(text, script, 'iast')
+            except Exception:
+                # fallback to text if transliteration fails
+                return text
+        # Prefer ipa_text if produced, otherwise romanized IAST as fallback
+        return ipa_text if ipa_text else transliterate(text, script, 'iast')
 
-# -------------------------
-# UI and main
-# -------------------------
-def language_badge(name):
-    col = LANG_COLORS.get(name, "#7c5cff")
-    return f'<span class="lang-badge" style="background:{col}">{name}</span>'
+    # Non-indic fallback: approximate IPA by replacements
+    ipa = text
+    # Preserve original characters and make substitutions for a readable IPA-like approximation
+    ipa = ipa.replace("th", "θ").replace("sh", "ʃ").replace("ch", "tʃ").replace("ph", "f")
+    ipa = ipa.replace("a", "ɑ").replace("e", "ɛ").replace("i", "i").replace("o", "ɔ").replace("u", "u")
+    if simplified:
+        # simplified fallback: strip non-alphanum for readability
+        return re.sub(r"[^a-zA-Z0-9\s]", "", text)
+    return ipa
 
-def colored_token(word, lang):
-    color = LANG_COLORS.get(lang, "#7c5cff")
-    safe = re.sub(r'[^a-zA-Z0-9\u00C0-\u024F\u3040-\u30FF\u3000-\u303F\u4E00-\u9FFF]', '', word)
-    return f'<span class="lang-token" style="background:{color}">{safe}</span>'
-
-def plot_syllable_chart(stats, lang_name):
-    orig = stats["orig"]
-    before = stats["before"]
-    after = stats["after"]
-    categories = ["Original", f"{lang_name} (clean)", f"{lang_name} (enhanced)"]
-    values = [orig, before, after]
-    colors = ["#2ecc71" if abs(v - orig) == 0 else "#f1c40f" if abs(v - orig) <= 2 else "#e74c3c" for v in values]
-    fig = go.Figure([go.Bar(x=categories, y=values, marker_color=colors, text=values, textposition="auto")])
-    fig.update_layout(title=f"Syllable Comparison — {lang_name}", yaxis_title="Syllable count", height=360)
-    return fig
-
+# ------------------------
+# Main App UI
+# ------------------------
 def main():
-    st.sidebar.markdown("<div class='card'><strong>Controls</strong></div>", unsafe_allow_html=True)
-    with st.sidebar:
-        st.markdown("### Settings")
-        default_langs = ["Spanish", "Hindi"]
-        selected = st.multiselect("Select 2+ target languages:", list(AVAILABLE_LANGUAGES.keys()), default=default_langs)
+    st.title("🎛️ Melosphere — Polyglot Lyric Blending")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        lyric_line = st.text_area("Enter your lyric line (English):", height=80)
+    with col2:
+        available_languages = {
+            "Spanish": "es", "Kannada": "kn", "Tamil": "ta", "Malayalam": "ml", "Hindi": "hi",
+            "Telugu": "te", "Japanese": "ja", "French": "fr", "Portuguese": "pt",
+            "German": "de", "Korean": "ko"
+        }
+        selected = st.multiselect("Select 2+ target languages:", list(available_languages.keys()), default=["Spanish", "Hindi"])
         mode = st.selectbox("Blending mode:", ["Interleave Words", "Phrase Swap", "Last-Word Swap"])
         enhance_rhythm = st.checkbox("✨ Rhythmic Enhancement", value=True)
-        max_fillers = st.slider("Max fillers (if needed)", 0, 6, 3)
-        show_chart = st.checkbox("Show syllable charts", value=True)
-        show_simple_pron = st.checkbox("Show simplified pronunciation", value=False)
-        show_logs = st.checkbox("Show logs in sidebar", value=True)
+        fillers_in_blend_only = st.checkbox("Show fillers only in blended output", value=True)
+        show_plot = st.checkbox("Show syllable comparison chart", value=False)
+        show_dots = st.checkbox("Show syllable dots visual", value=False)
+        show_syllables = st.checkbox("Show syllable hints / rhythm warnings", value=True)
+        show_rhymes = st.checkbox("Show English rhymes for the last word", value=True)
 
-    col_main, col_right = st.columns([3, 1])
-    with col_main:
-        lyric = st.text_area("Enter your lyric line (English):", height=90, placeholder="e.g. I can hear the heartbeat of the city")
-        st.markdown("<div class='small-muted'>Tip: try short lyrical phrases for best blends.</div>", unsafe_allow_html=True)
-        st.markdown("---")
-        if not lyric or not selected:
-            st.info("Enter a lyric and select at least one language.")
-            return
+    if not lyric_line or not selected:
+        st.info("Enter a lyric and select at least one target language.")
+        with st.sidebar:
+            st.subheader("Logs")
+            st.text_area("Logs", value=st.session_state.get("melosphere_logs", ""), height=300)
+        return
 
-        # prepare languages dict
-        chosen_langs = {lang: AVAILABLE_LANGUAGES[lang] for lang in selected}
+    # Normalize input
+    lyric_line_clean = clean_text(lyric_line)
 
-        # perform translations concurrently
-        translations, stats = translate_all(lyric, chosen_langs, enhance_rhythm, max_fillers=max_fillers)
+    tgt_codes = [available_languages[l] for l in selected]
+    translations_clean, translations_enhanced, overall_stats = {}, {}, {}
 
-        # render Translations cards
-        st.markdown("<h3 style='margin-top:8px'>🌐 Translations</h3>", unsafe_allow_html=True)
-        tcols = st.columns(len(selected))
-        for col, lang in zip(tcols, selected):
-            with col:
-                code = translations[lang]["code"]
-                st.markdown(f"<div class='card'><div style='display:flex;justify-content:space-between;align-items:center;'><div><strong>{lang} — <span style='font-weight:600;color:#111;'>{code}</span></strong></div><div>{language_badge(lang)}</div></div><div style='margin-top:8px'><div style='font-size:15px'>{translations[lang]['clean']}</div><div class='small-muted'>Enhanced: {translations[lang]['enhanced']}</div></div></div>", unsafe_allow_html=True)
-
-        st.markdown("<h3 style='margin-top:18px'>🎛️ Blended Output</h3>", unsafe_allow_html=True)
-        enhanced_list = [translations[lang]["enhanced"] for lang in selected]
-        if mode == "Interleave Words":
-            blended = interleave_words_safe(enhanced_list)
-        elif mode == "Phrase Swap":
-            blended = phrase_swap_improved(enhanced_list)
+    # Concurrentize translations
+    def translate_and_enhance(lang_name, code):
+        trans = translate_text(lyric_line_clean, code)
+        if enhance_rhythm:
+            enhanced, orig_syll, trans_before, trans_after, diff = rhythmic_translation_enhancement(lyric_line_clean, trans)
         else:
-            blended = last_word_swap_safe(lyric, enhanced_list)
-        blended = remove_consecutive_duplicates(blended)
+            enhanced = trans
+            orig_syll = count_syllables_general(lyric_line_clean, "en")
+            trans_before = count_syllables_general(trans, code)
+            trans_after = trans_before
+            diff = orig_syll - trans_before
+        return (lang_name, code, trans, enhanced, orig_syll, trans_before, trans_after, diff)
 
-        # colorize blended output by cycling language tokens where possible
-        # simple approach: split blended into words and try to map tokens back to languages using exact matches
-        tokens = blended.split()
-        colored_tokens = []
-        for tok in tokens:
-            assigned = None
-            for lang in selected:
-                # if token appears in enhanced version of this language (case-insensitive), assign its color
-                if re.search(r'\b' + re.escape(tok) + r'\b', translations[lang]["enhanced"], re.IGNORECASE):
-                    assigned = lang
-                    break
-            if assigned:
-                colored_tokens.append(colored_token(tok, assigned))
-            else:
-                # fallback neutral token
-                colored_tokens.append(f'<span style="padding:2px 6px;border-radius:6px;background:#d1d5db;color:#111;margin:2px;display:inline-block;">{tok}</span>')
-        blended_html = " ".join(colored_tokens)
-        st.markdown(f"<div class='blended'>{blended_html}</div>", unsafe_allow_html=True)
+    # Use ThreadPoolExecutor to speed up translate calls
+    with ThreadPoolExecutor(max_workers=min(8, len(tgt_codes))) as executor:
+        futures = [executor.submit(translate_and_enhance, lang_name, code) for lang_name, code in zip(selected, tgt_codes)]
+        for fut in as_completed(futures):
+            try:
+                lang_name, code, trans, enhanced, orig_syll, trans_before, trans_after, diff = fut.result()
+                translations_clean[lang_name] = trans
+                translations_enhanced[lang_name] = enhanced
+                overall_stats[lang_name] = {
+                    "orig_syll": orig_syll,
+                    "trans_before": trans_before,
+                    "trans_after": trans_after,
+                    "diff": diff,
+                    "code": code
+                }
+                log(f"Translated: {lang_name} ({code}) — before:{trans_before}, after:{trans_after}, diff:{diff}")
+            except Exception as e:
+                log(f"Translation future failed: {e}")
 
-        st.markdown("<h3 style='margin-top:18px'>🔊 Pronunciation & Audio</h3>", unsafe_allow_html=True)
-        for lang in selected:
-            code = translations[lang]["code"]
-            txt = translations[lang]["clean"]
-            pron = get_pronunciation(txt, code, simplified=show_simple_pron)
-            st.markdown(f"**{lang} ({code})**")
-            st.markdown(f"<div class='small-muted'>Pronunciation: {pron}</div>", unsafe_allow_html=True)
-            audio_html = generate_tts_audio_cached(txt, code)
-            st.markdown(audio_html, unsafe_allow_html=True)
-            st.markdown("---")
+    # Translations UI
+    st.subheader("Translations")
+    trans_cols = st.columns(len(selected))
+    for col, lang_name in zip(trans_cols, selected):
+        with col:
+            code = available_languages[lang_name]
+            st.markdown(f"**{lang_name} ({code})**")
+            st.write(translations_clean.get(lang_name, ""))
+            if show_syllables:
+                stats = overall_stats.get(lang_name, {})
+                st.caption(f"Syllables — orig: {stats.get('orig_syll')}, clean: {stats.get('trans_before')}, enhanced: {stats.get('trans_after')}")
 
-        if show_chart:
-            st.markdown("<h3 style='margin-top:18px'>📈 Syllable Comparison</h3>", unsafe_allow_html=True)
-            # Render charts in tabs to avoid heavy redraw
-            chart_tabs = st.tabs(selected)
-            for tab, lang in zip(chart_tabs, selected):
-                with tab:
-                    fig = plot_syllable_chart(stats[lang], lang)
-                    st.plotly_chart(fig, use_container_width=True)
+    # Blended output
+    st.subheader("Blended Outputs")
+    translations_list_for_blend = [translations_enhanced[name] for name in selected]
+    if mode == "Interleave Words":
+        blended = interleave_words(lyric_line_clean, translations_list_for_blend)
+    elif mode == "Phrase Swap":
+        blended = phrase_swap(lyric_line_clean, translations_list_for_blend)
+    else:
+        blended = last_word_swap(lyric_line_clean, translations_list_for_blend)
 
-    with col_right:
-        # show logs and quick controls
-        st.markdown("<div class='card'><strong>Quick Actions</strong></div>", unsafe_allow_html=True)
-        if st.button("Try example: 'I feel the sun inside me'"):
-            # to programmatically set text_area we must rerun with session state
-            st.session_state["example_lyric"] = "I feel the sun inside me, burning bright."
-            st.experimental_rerun()
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        if show_logs:
-            st.markdown("<div class='card'><strong>Logs</strong></div>", unsafe_allow_html=True)
-            st.text_area("Logs", value=st.session_state.get("logs", ""), height=300)
+    blended = remove_consecutive_duplicates(blended)
+    st.info(f"**Blended lyric preview:**\n{blended}")
+
+    # Charts
+    if show_plot:
+        # ensure charts reflect latest overall_stats
+        for lang_name in selected:
+            stats = overall_stats[lang_name]
+            fig = plot_syllable_comparison(stats["orig_syll"], stats["trans_before"], stats["trans_after"], lang_name)
+            st.plotly_chart(fig, use_container_width=True)
+
+    # Pronunciation Guide (restore original behavior)
+    st.subheader("🎙️ Pronunciation Guide")
+    show_simple = st.checkbox("See simplified style (default = IPA)", value=False, key="pron_simple")
+    for lang_name in selected:
+        code = available_languages[lang_name]
+        text = translations_clean[lang_name]
+        pron = get_pronunciation(text, code, simplified=show_simple)
+        st.markdown(f"**{lang_name} pronunciation:**")
+        # Ensure IPA/simplified shows as plain text (not mis-escaped)
+        if isinstance(pron, str):
+            st.markdown(pron)
+        else:
+            st.write(pron)
+        st.markdown(generate_tts_audio(text, code), unsafe_allow_html=True)
+
+    # Side logs
+    with st.sidebar:
+        st.subheader("Logs")
+        st.text_area("Runtime logs:", value=st.session_state.get("melosphere_logs", ""), height=300)
 
 if __name__ == "__main__":
     main()
