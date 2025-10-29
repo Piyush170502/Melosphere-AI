@@ -94,15 +94,7 @@ st.markdown(
     }
 
     /* --- TAB STYLES (Black Background & Gradient Tab Name/Border) --- */
-    
-    /* Tabs Container (The horizontal bar holding the tabs) */
-    div[data-testid="stTabs"] {
-        background-color: black;
-        padding: 0 10px 0 10px; 
-        border-radius: 10px 10px 0 0;
-    }
-
-    /* Tab Buttons - inactive and active (Base Style for Border) */
+    /* Tab Buttons - inactive */
     div[data-testid="stTab"] button {
         background-color: black !important;
         color: #a0a0a0; /* Default color for inactive text */
@@ -111,35 +103,17 @@ st.markdown(
         padding: 10px 15px !important;
         transition: all 0.2s ease;
         font-weight: 500;
-        
-        /* Gradient Border for ALL tabs */
-        position: relative;
-        overflow: hidden;
-        margin-right: 5px; /* Separate tabs slightly */
-        
-        /* Inactive tab border/underline is replaced by the pseudo-element border */
-        border-bottom: 4px solid #000 !important; 
-    }
-    
-    /* Gradient Border for all tabs using pseudo-element */
-    div[data-testid="stTab"] button::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border-radius: 8px 8px 0 0;
-        padding: 1px; /* Thickness of the gradient border */
-        background: linear-gradient(90deg, #7c5cff, #ff7ab6);
-        -webkit-mask:
-            linear-gradient(#fff 0 0) content-box,
-            linear-gradient(#fff 0 0);
-        mask:
-            linear-gradient(#fff 0 0) content-box,
-            linear-gradient(#fff 0 0);
-        -webkit-mask-composite: xor;
-        mask-composite: exclude;
+        border-bottom: 4px solid #444 !important; /* Inactive tab border */
     }
 
-    /* Active Tab: Gradient Text and Gradient Border Bottom (Underline) */
+    /* Tabs Container (The horizontal bar holding the tabs) */
+    div[data-testid="stTabs"] {
+        background-color: black;
+        padding: 0 10px 0 10px; 
+        border-radius: 10px 10px 0 0;
+    }
+    
+    /* Active Tab: Gradient Text and Gradient Border */
     div[data-testid="stTab"] button[aria-selected="true"] {
         /* Gradient text for the active tab */
         background: linear-gradient(90deg, #7c5cff, #ff7ab6) !important;
@@ -149,40 +123,39 @@ st.markdown(
         background-color: black !important; /* Ensure background stays black */
         font-weight: 700;
 
-        /* Gradient Border Bottom (Underline) */
+        /* Gradient Border (using border-image for a bottom underline effect) */
         border-bottom: 4px solid;
         border-image: linear-gradient(to right, #7c5cff, #ff7ab6) 1;
         border-image-slice: 1;
         border-radius: 0 !important; 
     }
 
-    /* Content area *inside* the tabs - CRITICAL FIX: Keep this black */
+    /* Content area *inside* the tabs - CRITICAL FIXES */
     .st-emotion-cache-1cpxdwv, .st-emotion-cache-1cpxdwv > div { 
         background: black !important; 
         color: #f1f1f1 !important; 
-        padding: 20px; /* Restore some padding for content */
     }
 
     /* --- FINAL BLENDED LYRIC BOX (st.info) STYLES --- */
 
-    /* 1. Target the outer wrapper and remove all borders/gradients/shadows */
+    /* 1. Target the outer wrapper that previously applied the gradient border and remove it */
     div[data-testid="stVerticalBlock"] > div:has(div.stAlert) {
-        background: black !important; 
+        background: black !important; /* Ensure it's black */
         border-radius: 16px;
-        padding: 0px !important; 
-        box-shadow: none !important; 
-        background-image: none !important; 
+        padding: 0px !important; /* Remove padding */
+        box-shadow: none !important; /* Remove any shadow */
+        background-image: none !important; /* Remove any lingering gradient background-image */
     }
 
     /* 2. Style the st.info itself (inner box) */
     div.stAlert {
-        background: black !important; 
-        color: #f1f1f1 !important; 
-        border: none !important; 
+        background: black !important; /* Set alert background to black */
+        color: #f1f1f1 !important; /* Ensure alert text is light */
+        border: none !important; /* **REMOVE ALL BORDERS** */
         border-radius: 15px !important;
         padding: 15px !important;
         box-shadow: none !important; 
-        position: static !important; 
+        position: static !important; /* Remove relative positioning */
         overflow: visible !important; 
     }
     
@@ -634,7 +607,7 @@ def main():
 
     # --- TABBED UI OUTPUTS ---
     tab_blend, tab_trans, tab_pron, tab_chart = st.tabs(
-        ["🎵 Blended Lyric", "📝 Translations & Rhythm", "🎙️ Pronunciation Guide", "📊 Syllable Charts"]
+        ["Blended Lyric", "Translations & Rhythm", "Pronunciation Guide", "Syllable Charts"]
     )
 
     # 1. BLENDED LYRIC TAB
