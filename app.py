@@ -17,6 +17,98 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import io
 
+# -------------------- UI STYLING --------------------
+st.markdown("""
+    <style>
+    /* Gradient animated background */
+    body {
+        background: linear-gradient(135deg, #e0f7fa, #f1f8e9, #fff3e0);
+        background-size: 400% 400%;
+        animation: gradientShift 20s ease infinite;
+    }
+
+    @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    /* Header gradient animation */
+    .main-header {
+        text-align: center;
+        font-size: 2.4rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #ff6f61, #ffcc80, #64b5f6, #81c784);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: hueRotate 10s linear infinite;
+        margin-bottom: 0.8rem;
+    }
+
+    @keyframes hueRotate {
+        0% { filter: hue-rotate(0deg); }
+        100% { filter: hue-rotate(360deg); }
+    }
+
+    /* Subheader */
+    .sub-header {
+        text-align: center;
+        font-size: 1.1rem;
+        color: #555;
+        margin-bottom: 2rem;
+    }
+
+    /* Stylish input area */
+    textarea {
+        border: 2px solid #ddd !important;
+        border-radius: 10px !important;
+        transition: all 0.3s ease-in-out !important;
+        box-shadow: none !important;
+    }
+
+    textarea:focus {
+        outline: none !important;
+        border-color: #64b5f6 !important;
+        box-shadow: 0 0 10px rgba(100, 181, 246, 0.6) !important;
+    }
+
+    /* Streamlit button styling */
+    div.stButton > button {
+        background: linear-gradient(90deg, #81c784, #64b5f6);
+        color: white;
+        border-radius: 12px;
+        font-weight: 600;
+        padding: 0.6rem 1.4rem;
+        border: none;
+        transition: all 0.3s ease;
+    }
+
+    div.stButton > button:hover {
+        transform: scale(1.05);
+        box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Hide toggles section entirely */
+    div[data-testid="stCheckbox"] {
+        display: none;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# -------------------- HEADER --------------------
+st.markdown("""
+    <h1 class="main-header">🎛️ Melosphere — Polyglot Lyric Blending</h1>
+    <p class="sub-header">Rhythmic translation & polyglot blending — enhanced ✨</p>
+""", unsafe_allow_html=True)
+
+# Then continue with your existing app logic (text input, translation, charts, etc.)
+lyrics_input = st.text_area(
+    "🎤 Enter your lyrics:",
+    placeholder="e.g., You're my sunshine 🌞 or write your own creative lines...",
+    height=150
+)
+
 # ------------------------
 # Page / styling
 # ------------------------
