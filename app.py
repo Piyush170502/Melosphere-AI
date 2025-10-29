@@ -92,7 +92,57 @@ st.markdown(
         animation: textPulse 1.4s ease-in-out infinite;
     }
 
-    /* --- NEW STYLES FOR TABBED OUTPUTS --- */
+    /* --- TAB STYLES (MODIFIED) --- */
+    div[data-testid="stTab"] button {
+        /* 1. Black background for the tab buttons */
+        background-color: black !important;
+        color: #a0a0a0; /* Default color for inactive text */
+        border-radius: 8px 8px 0 0 !important;
+        border: none !important;
+        padding: 10px 15px !important;
+        transition: all 0.2s ease;
+        font-weight: 500;
+    }
+
+    /* Target the container of the tab labels to set background to black */
+    div[data-testid="stTabs"] {
+        background-color: black;
+        padding: 0 10px 0 10px; /* Optional: adds a bit of padding around the tabs */
+        border-radius: 10px 10px 0 0;
+    }
+    
+    /* Active Tab: Gradient Text and Gradient Border */
+    div[data-testid="stTab"] button[aria-selected="true"] {
+        /* 2. Gradient text for the active tab */
+        background: linear-gradient(90deg, #7c5cff, #ff7ab6) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        
+        /* Ensure background stays black and is on top */
+        background-color: black !important; 
+        font-weight: 700;
+
+        /* 3. Gradient Border (using border-image for a bottom underline effect) */
+        border-bottom: 4px solid;
+        border-image: linear-gradient(to right, #7c5cff, #ff7ab6) 1;
+        border-image-slice: 1;
+        border-radius: 0 !important; 
+    }
+
+    /* Inactive Tab Border: Dark Solid Line */
+    div[data-testid="stTab"] button:not([aria-selected="true"]) {
+        border-bottom: 4px solid #444 !important;
+    }
+    /* The space under the tabs needs a dark background to blend */
+    div[data-testid="stHorizontalBlock"] > div[data-testid="stVerticalBlock"] {
+        background-color: black; 
+    }
+    /* Set the content area after the tabs back to white/transparent to match the body */
+    .st-emotion-cache-1cpxdwv { /* This targets the content area below the tab bar */
+        background: transparent !important;
+    }
+    /* ------------------------------------ */
+
 
     /* Gradient text for output headers */
     .output-header {
@@ -106,12 +156,11 @@ st.markdown(
         display: block;
     }
 
-    /* Gradient Bordered Card Style for main output */
+    /* Gradient Bordered Card Style for main output (Blended Lyric) */
     div[data-testid="stVerticalBlock"] > div:has(div.stAlert) {
-        /* Target the parent block containing st.info which is used for blended output */
         background: #ffffff;
         border-radius: 16px;
-        padding: 1px; /* To make the gradient border visible */
+        padding: 1px;
         box-shadow: 0 10px 30px rgba(124, 92, 255, 0.1);
         background-image: linear-gradient(90deg, #7c5cff, #ff7ab6);
     }
@@ -126,11 +175,11 @@ st.markdown(
 
     /* Style for the Blended Lyric Preview text inside st.info */
     div[data-testid="stVerticalBlock"] > div:has(div.stAlert) .stAlert strong {
-        color: #7c5cff; /* Keep a prominent color for the label */
+        color: #7c5cff; 
     }
 
     /* Style for the Translation output columns (simple white card with soft shadow) */
-    .st-emotion-cache-1r6ipbh { /* Target streamlit columns for translation */
+    .st-emotion-cache-1r6ipbh { 
         background: white;
         border-radius: 12px;
         padding: 15px;
@@ -566,7 +615,7 @@ def main():
     # 3. PRONUNCIATION GUIDE TAB
     with tab_pron:
         st.markdown('<span class="output-header">Phonetic Guide and Audio Examples</span>', unsafe_allow_html=True)
-        # Re-introducing a single toggle for simplified/IPA, as pronunciation is difficult without choice
+        # Retained a single checkbox for phonetic style choice
         show_simple = st.checkbox("Show Simplified Transliteration (e.g., IAST) instead of IPA", value=False)
 
         for lang_name in selected:
