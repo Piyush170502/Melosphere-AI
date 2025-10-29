@@ -435,7 +435,7 @@ def main():
         }
         selected = st.multiselect("Select 2+ target languages:", list(available_languages.keys()), default=["Spanish", "Hindi"])
         mode = st.selectbox("Blending mode:", ["Interleave Words", "Phrase Swap", "Last-Word Swap"])
-        enhance_rhythm = st.checkbox("✨ Rhythmic Enhancement", value=True)
+        enhance_rhythm = st.checkbox("Rhythmic Enhancement", value=True)
         # removed toggles: fillers_in_blend_only, show_dots, show_rhymes
         show_plot = st.checkbox("Show syllable comparison chart", value=False)
         show_syllables = st.checkbox("Show syllable hints / rhythm warnings", value=True)
