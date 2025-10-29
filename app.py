@@ -58,21 +58,40 @@ st.markdown(
         font-size: 14px;
     }
 
-    /* Input area style and focused outline */
-    textarea {
-        border-radius: 12px !important;
-        border: 1px solid #e2e8f0 !important;
-        padding: 12px !important;
-        transition: box-shadow 0.18s ease, border-color 0.18s ease;
-        font-size: 16px !important;
-        line-height: 1.5 !important;
-        background: rgba(255,255,255,0.95) !important;
-    }
-    textarea:focus {
-        border-color: rgba(124, 92, 255, 0.9) !important;
-        box-shadow: 0 6px 18px rgba(124, 92, 255, 0.12) !important;
-        outline: none !important;
-    }
+/* Modern dark textarea style */
+textarea {
+    border-radius: 12px !important;
+    border: 1px solid #3a3a3a !important;
+    padding: 12px !important;
+    transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.3s ease;
+    font-size: 16px !important;
+    line-height: 1.5 !important;
+    background: #000 !important; /* Black background */
+    color: #f1f1f1 !important; /* Light text for contrast */
+    resize: vertical !important;
+    caret-color: #9b6bff !important; /* Stylish purple cursor */
+}
+
+/* Focus effect */
+textarea:focus {
+    border-color: rgba(124, 92, 255, 0.9) !important;
+    box-shadow: 0 0 12px rgba(124, 92, 255, 0.35) !important;
+    outline: none !important;
+    background: #0a0a0a !important; /* Slightly lighter on focus */
+}
+
+/* Typing animation */
+@keyframes textPulse {
+    0% { text-shadow: 0 0 0 rgba(124, 92, 255, 0); }
+    50% { text-shadow: 0 0 6px rgba(124, 92, 255, 0.4); }
+    100% { text-shadow: 0 0 0 rgba(124, 92, 255, 0); }
+}
+
+/* Animate text glow while typing */
+textarea:focus:not(:placeholder-shown) {
+    animation: textPulse 1.4s ease-in-out infinite;
+}
+
 
     /* Card style */
     .card {
