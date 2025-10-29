@@ -15,12 +15,12 @@ from indic_transliteration.sanscript import transliterate
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import io
- 
+
 # ------------------------
 # Page & Animated CSS UI
 # ------------------------
 st.set_page_config(page_title="Melosphere — Polyglot Blending", layout="wide")
- 
+
 st.markdown(
     """
     <style>
@@ -36,7 +36,7 @@ st.markdown(
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
- 
+
     /* Header gradient text */
     .main-header {
         text-align: center;
@@ -57,7 +57,7 @@ st.markdown(
         margin-bottom: 18px;
         font-size: 14px;
     }
- 
+
     /* Modern dark textarea style (input) */
     textarea {
         border-radius: 12px !important;
@@ -71,7 +71,7 @@ st.markdown(
         resize: vertical !important;
         caret-color: #9b6bff !important; /* Stylish purple cursor */
     }
- 
+
     /* Focus effect */
     textarea:focus {
         border-color: rgba(124, 92, 255, 0.9) !important;
@@ -79,21 +79,21 @@ st.markdown(
         outline: none !important;
         background: #0a0a0a !important; /* Slightly lighter on focus */
     }
- 
+
     /* Typing animation */
     @keyframes textPulse {
         0% { text-shadow: 0 0 0 rgba(124, 92, 255, 0); }
         50% { text-shadow: 0 0 6px rgba(124, 92, 255, 0.4); }
         100% { text-shadow: 0 0 0 rgba(124, 92, 255, 0); }
     }
- 
+
     /* Animate text glow while typing */
     textarea:focus:not(:placeholder-shown) {
         animation: textPulse 1.4s ease-in-out infinite;
     }
- 
+
     /* --- NEW STYLES FOR TABBED OUTPUTS --- */
- 
+
     /* Gradient text for output headers */
     .output-header {
         font-size: 20px;
@@ -152,7 +152,7 @@ st.markdown(
         transform: translateY(-2px);
         box-shadow: 0 8px 24px rgba(124,92,255,0.16);
     }
- 
+
     /* small muted text */
     .muted {
         color:#6b7280; font-size:13px;
@@ -161,18 +161,18 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
- 
+
 st.markdown('<div style="text-align:center;"><div class="main-header">🎛️ Melosphere — Polyglot Lyric Blending</div><div class="sub-header">Rhythmic translation & polyglot blending — enhanced UI</div></div>', unsafe_allow_html=True)
- 
+
 # ------------------------
 # Logging (sidebar) - NO LOGIC CHANGE
 # ------------------------
 if "melosphere_logs" not in st.session_state:
     st.session_state["melosphere_logs"] = ""
- 
+
 def log(msg: str):
     st.session_state["melosphere_logs"] += msg + "\n"
- 
+
 # ------------------------
 # Google Cloud Translate Setup - NO LOGIC CHANGE
 # ------------------------
@@ -187,9 +187,9 @@ def get_translate_client():
     except Exception as e:
         log(f"❌ Translate init error: {e}")
         return None
- 
+
 translate_client = get_translate_client()
- 
+
 def translate_text(text, target_lang):
     if not translate_client:
         return "⚠️ Translation client not initialized. Check your credentials in Streamlit secrets."
@@ -199,7 +199,7 @@ def translate_text(text, target_lang):
     except Exception as e:
         log(f"⚠️ Translation error for {target_lang}: {e}")
         return f"Error during translation: {e}"
- 
+
 # ------------------------
 # Rhymes & Syllable helpers - NO LOGIC CHANGE
 # ------------------------
@@ -211,7 +211,7 @@ def get_rhymes(word):
     except Exception:
         pass
     return []
- 
+
 def clean_text(text):
     if text is None:
         return ""
@@ -219,7 +219,7 @@ def clean_text(text):
     t = t.replace("“", '"').replace("”", '"').replace("—", "-").replace("–", "-")
     t = t.strip()
     return t
- 
+
 def count_syllables_english(word):
     phones = pronouncing.phones_for_word(word)
     if phones:
@@ -228,7 +228,7 @@ def count_syllables_english(word):
         except Exception:
             return sum(1 for ch in word.lower() if ch in 'aeiou')
     return sum(1 for ch in word.lower() if ch in 'aeiou')
- 
+
 def count_syllables_heuristic(text):
     text = str(text)
     for ch in ",.!?;:-—()\"'":
@@ -248,7 +248,7 @@ def count_syllables_heuristic(text):
             groups = 1
         syllables += groups
     return syllables
- 
+
 def count_syllables_general(text, lang_code):
     if not text or not isinstance(text, str):
         return 0
@@ -257,12 +257,12 @@ def count_syllables_general(text, lang_code):
         return sum(count_syllables_english(w) for w in words)
     else:
         return count_syllables_heuristic(text)
- 
+
 # ------------------------
 # Smart filler insertion (deterministic) - NO LOGIC CHANGE
 # ------------------------
 _FILLERS = ["oh", "la", "yeah", "na", "hey", "mmm"]
- 
+
 def _build_fillers(diff, max_fillers=3, seed_text=None):
     fillers = _FILLERS
     k = min(max_fillers, max(0, diff))
@@ -277,7 +277,7 @@ def _build_fillers(diff, max_fillers=3, seed_text=None):
     else:
         chosen = [rnd.choice(fillers) for _ in range(k)]
     return " ".join(chosen)
- 
+
 def insert_fillers_safely(translated_text, fillers_str):
     if not fillers_str:
         return translated_text
@@ -292,7 +292,7 @@ def insert_fillers_safely(translated_text, fillers_str):
         if last_comma != -1 and last_comma < len(t) - 1:
             return f"{t}, {fillers_str}"
         return f"{t}, {fillers_str}"
- 
+
 # ------------------------
 # Rhythmic Translation Enhancement - NO LOGIC CHANGE
 # ------------------------
@@ -309,7 +309,7 @@ def rhythmic_translation_enhancement(original, translated, max_fillers=3):
         trans_syll_after = count_syllables_heuristic(enhanced)
     enhanced = re.sub(r"\s+", " ", enhanced).strip()
     return enhanced, orig_syll, trans_syll_before, trans_syll_after, diff
- 
+
 # ------------------------
 # Blending Strategies - NO LOGIC CHANGE
 # ------------------------
@@ -325,7 +325,7 @@ def interleave_words(original, translations_by_lang):
                     continue
                 blended_tokens.append(tok)
     return " ".join(blended_tokens)
- 
+
 def phrase_swap(original, translations_by_lang):
     segments = []
     for t in translations_by_lang:
@@ -358,7 +358,7 @@ def phrase_swap(original, translations_by_lang):
         if not out or w.lower() != out[-1].lower():
             out.append(w)
     return " ".join(out)
- 
+
 def last_word_swap(original, translations_by_lang):
     orig_words = original.strip().split()
     if not orig_words:
@@ -371,7 +371,7 @@ def last_word_swap(original, translations_by_lang):
                 new_last = tw[-2]
             return " ".join(orig_words[:-1] + [new_last])
     return original
- 
+
 # ------------------------
 # Utility - NO LOGIC CHANGE
 # ------------------------
@@ -384,13 +384,13 @@ def remove_consecutive_duplicates(text):
         if w != out[-1]:
             out.append(w)
     return " ".join(out)
- 
+
 def syllable_dots(count, cap=40):
     dots = "● " * min(count, cap)
     if count > cap:
         dots += f"...(+{count-cap})"
     return dots.strip()
- 
+
 def plot_syllable_comparison(orig_syll, trans_before, trans_after, lang_name):
     categories = ["Original (en)", f"{lang_name} (clean)", f"{lang_name} (enhanced)"]
     values = [orig_syll, trans_before, trans_after]
@@ -407,7 +407,7 @@ def plot_syllable_comparison(orig_syll, trans_before, trans_after, lang_name):
         paper_bgcolor='rgba(0,0,0,0)',
     )
     return fig
- 
+
 # ------------------------
 # Pronunciation helpers - NO LOGIC CHANGE
 # ------------------------
@@ -425,7 +425,7 @@ def generate_tts_audio(text, lang_code):
     except Exception as e:
         log(f"TTS generation failed for {lang_code}: {e}")
         return f"<i>Audio unavailable: {e}</i>"
- 
+
 def get_pronunciation(text, lang_code, simplified=False):
     lang_code = lang_code.lower()
     indic_langs = {
@@ -438,7 +438,7 @@ def get_pronunciation(text, lang_code, simplified=False):
         'gu': ('guj-Gujr', 'gujarati'),
         'pa': ('pan-Guru', 'gurmukhi')
     }
- 
+
     if lang_code in indic_langs:
         epi_code, script = indic_langs[lang_code]
         try:
@@ -452,7 +452,7 @@ def get_pronunciation(text, lang_code, simplified=False):
             except Exception:
                 return text
         return ipa_text if ipa_text else transliterate(text, script, 'iast')
- 
+
     # Heuristic for non-supported languages
     ipa = text
     ipa = ipa.replace("th", "θ").replace("sh", "ʃ").replace("ch", "tʃ").replace("ph", "f")
@@ -460,13 +460,13 @@ def get_pronunciation(text, lang_code, simplified=False):
     if simplified:
         return re.sub(r"[^a-zA-Z0-9\s]", "", text)
     return ipa
- 
+
 # ------------------------
 # Main App UI & Processing
 # ------------------------
 def main():
     st.title("")  # no duplicate title printed here (we use header above)
- 
+
     # --- INPUT CONTROLS ---
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -481,26 +481,26 @@ def main():
         mode = st.selectbox("Blending mode:", ["Interleave Words", "Phrase Swap", "Last-Word Swap"])
         # Removed all toggles and kept only the logic to drive the code
         enhance_rhythm = True # Defaulted to True as it was the default and one of the core features
- 
+
     if not lyric_line or not selected:
         st.info("Enter a lyric and select at least one target language to begin.")
         with st.sidebar:
             st.subheader("Logs")
             st.text_area("Logs", value=st.session_state.get("melosphere_logs", ""), height=300)
         return
- 
+
     # --- PROCESSING (NO LOGIC CHANGE) ---
     lyric_line_clean = clean_text(lyric_line)
     tgt_codes = [available_languages[l] for l in selected]
     translations_clean, translations_enhanced, overall_stats = {}, {}, {}
- 
+
     def translate_and_enhance(lang_name, code):
         trans = translate_text(lyric_line_clean, code)
         # Using fixed max_fillers=3 as per original logic
         enhanced, orig_syll, trans_before, trans_after, diff = \
             rhythmic_translation_enhancement(lyric_line_clean, trans, max_fillers=3)
         return (lang_name, code, trans, enhanced, orig_syll, trans_before, trans_after, diff)
- 
+
     with ThreadPoolExecutor(max_workers=min(8, len(tgt_codes))) as executor:
         futures = [executor.submit(translate_and_enhance, lang_name, code) for lang_name, code in zip(selected, tgt_codes)]
         for fut in as_completed(futures):
@@ -518,7 +518,7 @@ def main():
                 log(f"Translated: {lang_name} ({code}) — before:{trans_before}, after:{trans_after}, diff:{diff}")
             except Exception as e:
                 log(f"Translation future failed: {e}")
- 
+
     translations_list_for_blend = [translations_enhanced[name] for name in selected]
     if mode == "Interleave Words":
         blended = interleave_words(lyric_line_clean, translations_list_for_blend)
@@ -538,7 +538,7 @@ def main():
     with tab_blend:
         st.markdown('<span class="output-header">Final Blended Lyric</span>', unsafe_allow_html=True)
         st.info(f"**Blended lyric preview ({mode}):**\n{blended}")
-        
+
         # Audio for the blended line
         st.markdown(f"**Listen to the Blended Line (First selected language: {selected[0]})**")
         first_lang_code = available_languages[selected[0]]
@@ -553,11 +553,11 @@ def main():
             with col:
                 code = available_languages[lang_name]
                 stats = overall_stats.get(lang_name, {})
-                
+
                 # Custom box style applied via CSS for this section
                 st.markdown(f"**{lang_name} ({code})**")
                 st.write(translations_clean.get(lang_name, ""))
-                
+
                 # Syllable/Rhythm info
                 st.caption(f"**Rhythmically Enhanced:** {translations_enhanced.get(lang_name, '')}")
                 syllable_text = f"Syllables: **Original:** {stats.get('orig_syll')}, **Clean:** {stats.get('trans_before')}, **Enhanced:** {stats.get('trans_after')}"
@@ -568,14 +568,14 @@ def main():
         st.markdown('<span class="output-header">Phonetic Guide and Audio Examples</span>', unsafe_allow_html=True)
         # Re-introducing a single toggle for simplified/IPA, as pronunciation is difficult without choice
         show_simple = st.checkbox("Show Simplified Transliteration (e.g., IAST) instead of IPA", value=False)
-        
+
         for lang_name in selected:
             code = available_languages[lang_name]
             text = translations_clean[lang_name]
-            
+
             st.markdown("---")
             st.markdown(f"#### {lang_name} ({code})")
-            
+
             # Pronunciation
             pron = get_pronunciation(text, code, simplified=show_simple)
             st.markdown(f"**{'Simplified' if show_simple else 'IPA/Extended'} Transliteration:**")
@@ -583,11 +583,11 @@ def main():
                 st.markdown(f'```\n{pron}\n```')
             else:
                 st.write(pron)
-            
+
             # Audio Player
             st.markdown(f"**Audio Playback:**")
             st.markdown(generate_tts_audio(text, code), unsafe_allow_html=True)
- 
+
     # 4. SYLLABLE CHARTS TAB
     with tab_chart:
         st.markdown('<span class="output-header">Rhythm Match Visualization</span>', unsafe_allow_html=True)
@@ -602,6 +602,6 @@ def main():
     with st.sidebar:
         st.subheader("Logs")
         st.text_area("Runtime logs:", value=st.session_state.get("melosphere_logs", ""), height=300)
- 
+
 if __name__ == "__main__":
     main()
