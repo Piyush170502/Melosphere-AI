@@ -130,52 +130,39 @@ st.markdown(
         border-radius: 0 !important; 
     }
 
-    /* Content area *inside* the tabs - ***CRITICAL FIXES HERE*** */
-    /* This targets the main content container of the tab */
-    .st-emotion-cache-1cpxdwv, .st-emotion-cache-1cpxdwv > div { /* Target the main wrapper and direct children */
-        background: black !important; /* Set the entire tab content area to black */
-        color: #f1f1f1 !important; /* Default text color within tab content */
-    }
-
-    /* Specific for st.info and its parent wrappers */
-    /* Ensure the direct parent of st.info also has a black background */
-    div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"]:has(div.stAlert) {
+    /* Content area *inside* the tabs - CRITICAL FIXES */
+    .st-emotion-cache-1cpxdwv, .st-emotion-cache-1cpxdwv > div { 
         background: black !important; 
-        border-radius: 16px; /* Retain rounded corners */
-        padding: 0px !important; /* Adjust padding if needed */
-        background-image: none !important; /* Remove any lingering gradient background-image */
-        box-shadow: none !important; /* Remove any lingering shadow */
+        color: #f1f1f1 !important; 
     }
 
-    /* Inner box for the gradient border effect - NOW APPLIED DIRECTLY TO st.info */
+    /* --- FINAL BLENDED LYRIC BOX (st.info) STYLES --- */
+
+    /* 1. Target the outer wrapper that previously applied the gradient border and remove it */
+    div[data-testid="stVerticalBlock"] > div:has(div.stAlert) {
+        background: black !important; /* Ensure it's black */
+        border-radius: 16px;
+        padding: 0px !important; /* Remove padding */
+        box-shadow: none !important; /* Remove any shadow */
+        background-image: none !important; /* Remove any lingering gradient background-image */
+    }
+
+    /* 2. Style the st.info itself (inner box) */
     div.stAlert {
         background: black !important; /* Set alert background to black */
         color: #f1f1f1 !important; /* Ensure alert text is light */
-        border: none !important; /* Remove default border */
+        border: none !important; /* **REMOVE ALL BORDERS** */
         border-radius: 15px !important;
         padding: 15px !important;
-        box-shadow: none !important; /* Remove any alert shadow */
-        position: relative; /* Needed for border-image effect */
-        overflow: hidden; /* To clip border-image */
+        box-shadow: none !important; 
+        position: static !important; /* Remove relative positioning */
+        overflow: visible !important; 
     }
-    /* Re-apply the gradient border *around* the st.info itself, on a black background */
+    
+    /* 3. Remove the pseudo-element border completely */
     div.stAlert::before {
-        content: '';
-        position: absolute;
-        inset: 0;
-        border-radius: 16px; /* Match outer border radius */
-        padding: 1px; /* Thickness of the gradient border */
-        background: linear-gradient(90deg, #7c5cff, #ff7ab6);
-        -webkit-mask:
-            linear-gradient(#fff 0 0) content-box,
-            linear-gradient(#fff 0 0);
-        mask:
-            linear-gradient(#fff 0 0) content-box,
-            linear-gradient(#fff 0 0);
-        -webkit-mask-composite: xor;
-        mask-composite: exclude;
+        content: none !important;
     }
-
 
     /* Style for the Blended Lyric Preview text inside st.info */
     div.stAlert strong {
@@ -185,6 +172,20 @@ st.markdown(
         color: #f1f1f1 !important; /* Ensure paragraph text is white */
     }
 
+
+    /* --- OTHER STYLES (KEPT INTACT) --- */
+    
+    /* Gradient text for output headers */
+    .output-header {
+        font-size: 20px;
+        font-weight: 700;
+        margin-top: 15px;
+        margin-bottom: 5px;
+        background: linear-gradient(90deg, #7c5cff, #ff7ab6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        display: block;
+    }
 
     /* Audio Player Styling */
     .stAudio {
@@ -606,13 +607,13 @@ def main():
 
     # --- TABBED UI OUTPUTS ---
     tab_blend, tab_trans, tab_pron, tab_chart = st.tabs(
-        ["Blended Lyric", "Translations & Rhythm", "Pronunciation Guide", "Syllable Charts"]
+        ["🎵 Blended Lyric", "📝 Translations & Rhythm", "🎙️ Pronunciation Guide", "📊 Syllable Charts"]
     )
 
     # 1. BLENDED LYRIC TAB
     with tab_blend:
         st.markdown('<span class="output-header">Final Blended Lyric</span>', unsafe_allow_html=True)
-        # st.info is wrapped in the gradient border (via CSS)
+        # st.info is used here - its styling is set to black background, no border
         st.info(f"**Blended lyric preview ({mode}):**\n{blended}")
 
         # Audio for the blended line
