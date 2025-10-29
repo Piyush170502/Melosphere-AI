@@ -130,64 +130,72 @@ st.markdown(
         border-radius: 0 !important; 
     }
 
-    /* Content area *inside* the tabs - ***NEW FIX HERE*** */
-    /* This targets the content container of the tab */
-    .st-emotion-cache-1cpxdwv { 
+    /* Content area *inside* the tabs - ***CRITICAL FIXES HERE*** */
+    /* This targets the main content container of the tab */
+    .st-emotion-cache-1cpxdwv, .st-emotion-cache-1cpxdwv > div { /* Target the main wrapper and direct children */
         background: black !important; /* Set the entire tab content area to black */
-        padding: 20px; /* Add some padding back for content readability */
-        border-radius: 0 0 10px 10px;
-    }
-    /* Set the vertical block wrapper inside the tab content back to transparent/black */
-    div[data-testid="stHorizontalBlock"] > div[data-testid="stVerticalBlock"] {
-        background-color: black; 
-    }
-    
-    /* --- OTHER STYLES (KEPT INTACT) --- */
-    
-    /* Gradient text for output headers */
-    .output-header {
-        font-size: 20px;
-        font-weight: 700;
-        margin-top: 15px;
-        margin-bottom: 5px;
-        background: linear-gradient(90deg, #7c5cff, #ff7ab6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        display: block;
+        color: #f1f1f1 !important; /* Default text color within tab content */
     }
 
-    /* Gradient Bordered Card Style for main output (Blended Lyric) */
-    div[data-testid="stVerticalBlock"] > div:has(div.stAlert) {
-        /* This is the outer gradient border */
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 1px; 
-        box-shadow: 0 10px 30px rgba(124, 92, 255, 0.1);
-        background-image: linear-gradient(90deg, #7c5cff, #ff7ab6);
+    /* Specific for st.info and its parent wrappers */
+    /* Ensure the direct parent of st.info also has a black background */
+    div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"]:has(div.stAlert) {
+        background: black !important; 
+        border-radius: 16px; /* Retain rounded corners */
+        padding: 0px !important; /* Adjust padding if needed */
+        background-image: none !important; /* Remove any lingering gradient background-image */
+        box-shadow: none !important; /* Remove any lingering shadow */
     }
 
-    /* Inner box for the gradient border effect */
-    div[data-testid="stVerticalBlock"] > div:has(div.stAlert) > div > div > div.stAlert {
-        background: black !important; /* Changed from white to black for contrast with text */
-        color: #f1f1f1 !important; /* Ensure text is light */
-        border: none !important;
+    /* Inner box for the gradient border effect - NOW APPLIED DIRECTLY TO st.info */
+    div.stAlert {
+        background: black !important; /* Set alert background to black */
+        color: #f1f1f1 !important; /* Ensure alert text is light */
+        border: none !important; /* Remove default border */
         border-radius: 15px !important;
         padding: 15px !important;
+        box-shadow: none !important; /* Remove any alert shadow */
+        position: relative; /* Needed for border-image effect */
+        overflow: hidden; /* To clip border-image */
+    }
+    /* Re-apply the gradient border *around* the st.info itself, on a black background */
+    div.stAlert::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 16px; /* Match outer border radius */
+        padding: 1px; /* Thickness of the gradient border */
+        background: linear-gradient(90deg, #7c5cff, #ff7ab6);
+        -webkit-mask:
+            linear-gradient(#fff 0 0) content-box,
+            linear-gradient(#fff 0 0);
+        mask:
+            linear-gradient(#fff 0 0) content-box,
+            linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
     }
 
+
     /* Style for the Blended Lyric Preview text inside st.info */
-    div[data-testid="stVerticalBlock"] > div:has(div.stAlert) .stAlert strong {
-        color: #ff7ab6; /* Changed label color to pink gradient for visibility on black */
+    div.stAlert strong {
+        color: #f1f1f1 !important; /* Ensure strong text is white */
     }
-    
+    div.stAlert p {
+        color: #f1f1f1 !important; /* Ensure paragraph text is white */
+    }
+
+
     /* Audio Player Styling */
     .stAudio {
-        background-color: #1a1a1a !important;
+        background-color: #1a1a1a !important; /* Dark grey for audio player */
         border-radius: 12px;
         padding: 10px;
+        margin-top: 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
     
-    /* Style for the Translation output columns (simple white card with soft shadow) */
+    /* Style for the Translation output columns (dark cards) */
     .st-emotion-cache-1r6ipbh { 
         background: #1a1a1a; /* Darker than black background for contrast */
         color: #f1f1f1;
@@ -196,7 +204,12 @@ st.markdown(
         box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         border: 1px solid #333;
     }
-    .st-emotion-cache-1r6ipbh p { color: #f1f1f1; } /* Ensure text in columns is white */
+    .st-emotion-cache-1r6ipbh p, .st-emotion-cache-1r6ipbh strong, .st-emotion-cache-1r6ipbh span { 
+        color: #f1f1f1 !important; /* Ensure text in columns is white */
+    }
+    .st-emotion-cache-1r6ipbh .st-emotion-cache-1q1n03k { /* Target caption text specifically */
+        color: #b0b0b0 !important; 
+    }
 
 
     /* Buttons */
@@ -466,6 +479,7 @@ def plot_syllable_comparison(orig_syll, trans_before, trans_after, lang_name):
         height=360,
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
+        font_color='#f1f1f1' # Ensure chart title and labels are visible on dark background
     )
     return fig
 
